@@ -1,0 +1,7 @@
+today_stocks.json
+today_indices.json
+page_date.txt
+market_data.json
+.venv/
+__pycache__/
+*.pyc

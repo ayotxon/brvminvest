@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRVM Conseil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Public+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --surface-page: #f5f7f3;
+  --surface-card: #ffffff;
+  --surface-card-hover: #fbfbf9;
+  --ink: #14150f;
+  --ink-secondary: #52544a;
+  --ink-muted: #85876f;
+  --border: #dfe2d6;
+  --border-soft: #ecefe5;
+  --accent: #1d4d8f;
+  --accent-ink: #ffffff;
+  --accent-soft: #e7eef8;
+  --gold: #a5761f;
+  --gold-soft: #f6ecd7;
+  --up: #0a7d2c;
+  --down: #c1362f;
+  --flat: #85876f;
+  --tone-good-bg: #e4f5e1;
+  --tone-good-fg: #0a6b1e;
+  --tone-good-soft-bg: #edf6e2;
+  --tone-good-soft-fg: #3f7a12;
+  --tone-neutral-bg: #eef0e6;
+  --tone-neutral-fg: #52544a;
+  --tone-warning-bg: #fdf1d6;
+  --tone-warning-fg: #8a5a06;
+  --tone-serious-bg: #fbe4d8;
+  --tone-serious-fg: #9c4520;
+  --tone-critical-bg: #fbdedb;
+  --tone-critical-fg: #a3241d;
+  --shadow-card: 0 1px 2px rgba(20, 21, 15, 0.04), 0 4px 16px rgba(20, 21, 15, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-page: #101410;
+    --surface-card: #171b16;
+    --surface-card-hover: #1c211a;
+    --ink: #f2f3ec;
+    --ink-secondary: #c4c7b7;
+    --ink-muted: #8c8f7c;
+    --border: #2b3027;
+    --border-soft: #232821;
+    --accent: #5c93de;
+    --accent-ink: #0b1220;
+    --accent-soft: #1c2c42;
+    --gold: #d9ab52;
+    --gold-soft: #3a2f16;
+    --up: #35c15a;
+    --down: #e2685f;
+    --flat: #8c8f7c;
+    --tone-good-bg: #163420;
+    --tone-good-fg: #58d67f;
+    --tone-good-soft-bg: #1c3319;
+    --tone-good-soft-fg: #8fcf5c;
+    --tone-neutral-bg: #23271f;
+    --tone-neutral-fg: #c4c7b7;
+    --tone-warning-bg: #3a2f10;
+    --tone-warning-fg: #f0bb4c;
+    --tone-serious-bg: #3a2313;
+    --tone-serious-fg: #f0925f;
+    --tone-critical-bg: #3a1714;
+    --tone-critical-fg: #f08a80;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-page: #101410;
+  --surface-card: #171b16;
+  --surface-card-hover: #1c211a;
+  --ink: #f2f3ec;
+  --ink-secondary: #c4c7b7;
+  --ink-muted: #8c8f7c;
+  --border: #2b3027;
+  --border-soft: #232821;
+  --accent: #5c93de;
+  --accent-ink: #0b1220;
+  --accent-soft: #1c2c42;
+  --gold: #d9ab52;
+  --gold-soft: #3a2f16;
+  --up: #35c15a;
+  --down: #e2685f;
+  --flat: #8c8f7c;
+  --tone-good-bg: #163420;
+  --tone-good-fg: #58d67f;
+  --tone-good-soft-bg: #1c3319;
+  --tone-good-soft-fg: #8fcf5c;
+  --tone-neutral-bg: #23271f;
+  --tone-neutral-fg: #c4c7b7;
+  --tone-warning-bg: #3a2f10;
+  --tone-warning-fg: #f0bb4c;
+  --tone-serious-bg: #3a2313;
+  --tone-serious-fg: #f0925f;
+  --tone-critical-bg: #3a1714;
+  --tone-critical-fg: #f08a80;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--surface-page);
+  color: var(--ink);
+  font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-family: "Fraunces", Georgia, serif; font-weight: 600; margin: 0; text-wrap: balance; }
+button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+a { color: var(--accent); }
+.mono { font-family: "Spline Sans Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.muted { color: var(--ink-muted); }
+.small { font-size: 0.82em; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--flat); }
+
+#root { max-width: 1280px; margin: 0 auto; padding: 20px 20px 64px; }
+
+.app-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding: 8px 0 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.brand { display: flex; align-items: flex-start; gap: 14px; }
+.brand-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 10px;
+  background: var(--accent); color: var(--accent-ink);
+  font-family: "Fraunces", serif; font-weight: 600; font-size: 17px;
+  flex-shrink: 0;
+}
+.brand h1 { font-size: 1.5rem; }
+.tagline { margin: 4px 0 0; color: var(--ink-secondary); font-size: 0.88rem; max-width: 46ch; }
+.header-meta { text-align: right; }
+.meta-line { font-size: 0.92rem; }
+.ro-pill {
+  display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 999px;
+  background: var(--tone-warning-bg); color: var(--tone-warning-fg); font-size: 0.75rem; font-weight: 600;
+}
+
+.layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.col-main, .col-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+.panel {
+  background: var(--surface-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px; box-shadow: var(--shadow-card);
+}
+.panel h2 { font-size: 1.08rem; margin-bottom: 14px; }
+
+.indices-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.stat-tile { background: var(--surface-card-hover); border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; }
+.stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); margin-bottom: 4px; }
+.stat-value { font-family: "Spline Sans Mono", monospace; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stat-delta { font-size: 0.85rem; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+.synthese-text { color: var(--ink-secondary); margin: 4px 0 12px; }
+.breadth-row { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.88rem; font-weight: 600; margin-bottom: 8px; }
+
+.link-btn {
+  background: none; border: none; color: var(--accent); font-weight: 600; font-size: 0.9rem;
+  cursor: pointer; padding: 0;
+}
+.method-body { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; color: var(--ink-secondary); font-size: 0.9rem; max-width: 70ch; }
+.disclaimer { font-size: 0.82rem; color: var(--ink-muted); border-top: 1px solid var(--border-soft); padding-top: 10px; }
+
+.profile-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.profile-btn {
+  border: 1px solid var(--border); background: var(--surface-card-hover); color: var(--ink);
+  border-radius: 999px; padding: 7px 14px; cursor: pointer; font-weight: 600; font-size: 0.86rem;
+}
+.profile-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.profile-btn:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profile-desc { margin-top: 10px; }
+
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700;
+  white-space: nowrap;
+}
+.tone-good { background: var(--tone-good-bg); color: var(--tone-good-fg); }
+.tone-good-soft { background: var(--tone-good-soft-bg); color: var(--tone-good-soft-fg); }
+.tone-neutral { background: var(--tone-neutral-bg); color: var(--tone-neutral-fg); }
+.tone-warning { background: var(--tone-warning-bg); color: var(--tone-warning-fg); }
+.tone-serious { background: var(--tone-serious-bg); color: var(--tone-serious-fg); }
+.tone-critical { background: var(--tone-critical-bg); color: var(--tone-critical-fg); }
+
+.table-scroll { overflow-x: auto; }
+.data-table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+.data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); text-align: left; }
+.data-table td.name-cell { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-table th { color: var(--ink-muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.data-table th.sortable { cursor: pointer; user-select: none; }
+.data-table th.active { color: var(--accent); }
+.data-table tbody tr.row-main:hover { background: var(--surface-card-hover); cursor: pointer; }
+.expand-caret { color: var(--ink-muted); text-align: center; width: 20px; }
+.row-detail td { background: var(--surface-card-hover); }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; padding: 8px 4px 14px; }
+.reco-all { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 6px; font-size: 0.86rem; }
+.reco-line { line-height: 1.6; }
+
+.spark-wrap { display: inline-block; line-height: 0; }
+
+.portfolio-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+
+.add-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.input {
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+  background: var(--surface-card); color: var(--ink); min-width: 0; flex: 1 1 110px;
+}
+.btn {
+  border: none; background: var(--accent); color: var(--accent-ink); border-radius: 8px;
+  padding: 8px 16px; font-weight: 700; cursor: pointer; flex: 0 0 auto;
+}
+.btn:hover { filter: brightness(1.08); }
+.icon-btn {
+  border: none; background: transparent; color: var(--ink-muted); cursor: pointer; font-size: 0.9rem;
+  padding: 2px 6px; border-radius: 6px;
+}
+.icon-btn:hover { background: var(--tone-critical-bg); color: var(--tone-critical-fg); }
+
+.filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.filters-row .input { flex: 1 1 160px; }
+
+.app-footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--ink-muted); font-size: 0.82rem; display: flex; flex-direction: column; gap: 6px; }
+
+/* Écrans étroits : le tableau du marché doit garder Symbole / Cours /
+   Variation / Signal visibles sans avoir à faire défiler horizontalement —
+   ce sont les colonnes qui font tout l'intérêt de l'outil. Secteur et
+   tendance (déjà disponibles dans le détail dépliable de chaque ligne)
+   cèdent la place. */
+@media (max-width: 640px) {
+  #root { padding: 14px 12px 48px; }
+  .app-header { gap: 10px; }
+  .header-meta { text-align: left; }
+  .brand h1 { font-size: 1.25rem; }
+  .panel { padding: 14px; border-radius: 12px; }
+  .indices-row { grid-template-columns: repeat(2, 1fr); }
+  .market-table .col-secteur, .market-table .col-tendance { display: none; }
+  .data-table th, .data-table td { padding: 8px 4px; font-size: 0.82rem; }
+  .market-table .badge { padding: 3px 7px; font-size: 0.72rem; }
+  .market-table .expand-caret { width: 14px; padding-left: 2px; padding-right: 2px; }
+  .filters-row { flex-direction: column; }
+  .filters-row .input { flex: 1 1 auto; width: 100%; }
+  .add-form { flex-direction: column; align-items: stretch; }
+  .add-form .input, .add-form .btn { flex: 1 1 auto; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script id="market-data" type="application/json">{"lastUpdate":"2026-08-25T13:04:00+00:00","asOfDate":"2026-08-25","asOfLabel":"Mardi 25 août 2026","indices":[{"nom":"BRVM-30","cloture":256.23,"variation_pct":0.19},{"nom":"BRVM - COMPOSITE","cloture":530.07,"variation_pct":0.17},{"nom":"BRVM - PRESTIGE","cloture":196.44,"variation_pct":-0.12},{"nom":"BRVM - PRINCIPAL","cloture":385.35,"variation_pct":0.66}],"syntheseDuJour":"22 valeur(s) en hausse, 16 en baisse, 9 stable(s) sur 47 suivies. Plus forte hausse : SERVAIR ABIDJAN COTE D'IVOIRE (ABJC) +7,46%. Plus forte baisse : SICOR COTE D'IVOIRE (SICC) -7,46%.","stats":{"hausses":22,"baisses":16,"stables":9,"plusForteHausse":{"symbole":"ABJC","nom":"SERVAIR ABIDJAN COTE D'IVOIRE","variation_pct":7.46},"plusForteBaisse":{"symbole":"SICC","nom":"SICOR COTE D'IVOIRE","variation_pct":-7.46},"dataMaturityDays":2},"stocks":[{"symbole":"ABJC","nom":"SERVAIR ABIDJAN COTE D'IVOIRE","secteur":"Transport & Services","pays":"Côte d'Ivoire","cours_veille":3600.0,"cours_ouverture":3400.0,"cours_cloture":3600.0,"volume":5768.0,"variation_pct":7.46,"indicateurs":{"ma5":3475.04,"ma5_fenetre":2,"ma20":3475.04,"ma20_fenetre":2,"momentum_pct":7.46,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"hausse_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.79,"raison":"Signal conserver (prudent) : variation du jour +7,46%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ACHETER","score":3.13,"raison":"Signal acheter (équilibré) : variation du jour +7,46%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ACHETER","score":5.36,"raison":"Signal acheter (dynamique) : variation du jour +7,46%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BICB","nom":"BANQUE INTERNATIONALE POUR L'INDUSTRIE ET LE COMMERCE DU BENIN","secteur":"Finance - Banques","pays":"Bénin","cours_veille":8400.0,"cours_ouverture":8495.0,"cours_cloture":8495.0,"volume":2683.0,"variation_pct":3.6,"indicateurs":{"ma5":8347.4,"ma5_fenetre":2,"ma20":8347.4,"ma20_fenetre":2,"momentum_pct":3.6,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"hausse_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.38,"raison":"Signal conserver (prudent) : variation du jour +3,60%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"RENFORCER","score":1.51,"raison":"Signal renforcer (équilibré) : variation du jour +3,60%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ACHETER","score":2.59,"raison":"Signal acheter (dynamique) : variation du jour +3,60%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BICC","nom":"BICI COTE D'IVOIRE","secteur":"Finance - Banques","pays":"Côte d'Ivoire","cours_veille":28500.0,"cours_ouverture":28800.0,"cours_cloture":28600.0,"volume":652.0,"variation_pct":-0.69,"indicateurs":{"ma5":28699.36,"ma5_fenetre":2,"ma20":28699.36,"ma20_fenetre":2,"momentum_pct":-0.69,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.44,"raison":"Signal conserver (prudent) : variation du jour -0,69%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.75,"raison":"Signal conserver (équilibré) : variation du jour -0,69%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ALLÉGER","score":-1.06,"raison":"Signal alléger (dynamique) : variation du jour -0,69%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BNBC","nom":"BERNABE COTE D'IVOIRE","secteur":"Industrie - BTP/Matériaux","pays":"Côte d'Ivoire","cours_veille":1990.0,"cours_ouverture":1990.0,"cours_cloture":1990.0,"volume":3163.0,"variation_pct":0.0,"indicateurs":{"ma5":1990.0,"ma5_fenetre":2,"ma20":1990.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BOAB","nom":"BANK OF AFRICA BENIN","secteur":"Finance - Banques","pays":"Bénin","cours_veille":9985.0,"cours_ouverture":9845.0,"cours_cloture":9990.0,"volume":9260.0,"variation_pct":0.05,"indicateurs":{"ma5":9987.5,"ma5_fenetre":2,"ma20":9987.5,"ma20_fenetre":2,"momentum_pct":0.05,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.01,"raison":"Signal conserver (prudent) : variation du jour +0,05%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.02,"raison":"Signal conserver (équilibré) : variation du jour +0,05%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.04,"raison":"Signal conserver (dynamique) : variation du jour +0,05%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BOABF","nom":"BANK OF AFRICA BURKINA FASO","secteur":"Finance - Banques","pays":"Burkina Faso","cours_veille":7900.0,"cours_ouverture":7700.0,"cours_cloture":8000.0,"volume":10184.0,"variation_pct":5.26,"indicateurs":{"ma5":7800.11,"ma5_fenetre":2,"ma20":7800.11,"ma20_fenetre":2,"momentum_pct":5.26,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"hausse_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.56,"raison":"Signal conserver (prudent) : variation du jour +5,26%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ACHETER","score":2.2,"raison":"Signal acheter (équilibré) : variation du jour +5,26%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ACHETER","score":3.78,"raison":"Signal acheter (dynamique) : variation du jour +5,26%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BOAC","nom":"BANK OF AFRICA COTE D'IVOIRE","secteur":"Finance - Banques","pays":"Côte d'Ivoire","cours_veille":12985.0,"cours_ouverture":13000.0,"cours_cloture":12985.0,"volume":10825.0,"variation_pct":0.0,"indicateurs":{"ma5":12985.0,"ma5_fenetre":2,"ma20":12985.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BOAM","nom":"BANK OF AFRICA MALI","secteur":"Finance - Banques","pays":"Mali","cours_veille":6490.0,"cours_ouverture":6400.0,"cours_cloture":6550.0,"volume":6391.0,"variation_pct":0.92,"indicateurs":{"ma5":6520.14,"ma5_fenetre":2,"ma20":6520.14,"ma20_fenetre":2,"momentum_pct":0.92,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.1,"raison":"Signal conserver (prudent) : variation du jour +0,92%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.39,"raison":"Signal conserver (équilibré) : variation du jour +0,92%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.66,"raison":"Signal renforcer (dynamique) : variation du jour +0,92%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BOAN","nom":"BANK OF AFRICA NIGER","secteur":"Finance - Banques","pays":"Niger","cours_veille":5280.0,"cours_ouverture":5285.0,"cours_cloture":5345.0,"volume":4272.0,"variation_pct":1.23,"indicateurs":{"ma5":5312.53,"ma5_fenetre":2,"ma20":5312.53,"ma20_fenetre":2,"momentum_pct":1.23,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.13,"raison":"Signal conserver (prudent) : variation du jour +1,23%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.52,"raison":"Signal conserver (équilibré) : variation du jour +1,23%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.88,"raison":"Signal renforcer (dynamique) : variation du jour +1,23%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"BOAS","nom":"BANK OF AFRICA SENEGAL","secteur":"Finance - Banques","pays":"Sénégal","cours_veille":8500.0,"cours_ouverture":8020.0,"cours_cloture":8500.0,"volume":5658.0,"variation_pct":6.25,"indicateurs":{"ma5":8250.0,"ma5_fenetre":2,"ma20":8250.0,"ma20_fenetre":2,"momentum_pct":6.25,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"hausse_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.66,"raison":"Signal conserver (prudent) : variation du jour +6,25%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ACHETER","score":2.62,"raison":"Signal acheter (équilibré) : variation du jour +6,25%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ACHETER","score":4.49,"raison":"Signal acheter (dynamique) : variation du jour +6,25%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"CABC","nom":"SICABLE COTE D'IVOIRE","secteur":"Industrie","pays":"Côte d'Ivoire","cours_veille":3640.0,"cours_ouverture":3695.0,"cours_cloture":3620.0,"volume":426.0,"variation_pct":-0.55,"indicateurs":{"ma5":3630.01,"ma5_fenetre":2,"ma20":3630.01,"ma20_fenetre":2,"momentum_pct":-0.55,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.35,"raison":"Signal conserver (prudent) : variation du jour -0,55%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.59,"raison":"Signal conserver (équilibré) : variation du jour -0,55%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ALLÉGER","score":-0.84,"raison":"Signal alléger (dynamique) : variation du jour -0,55%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"CBIBF","nom":"CORIS BANK INTERNATIONAL BURKINA FASO","secteur":"Finance - Banques","pays":"Burkina Faso","cours_veille":29495.0,"cours_ouverture":30040.0,"cours_cloture":29000.0,"volume":991.0,"variation_pct":-3.33,"indicateurs":{"ma5":29499.48,"ma5_fenetre":2,"ma20":29499.48,"ma20_fenetre":2,"momentum_pct":-3.33,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"baisse_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-2.14,"raison":"Signal conserver (prudent) : variation du jour -3,33%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"VENDRE","score":-3.6,"raison":"Signal vendre (équilibré) : variation du jour -3,33%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-5.1,"raison":"Signal vendre (dynamique) : variation du jour -3,33%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"CFAC","nom":"CFAO MOTORS COTE D'IVOIRE","secteur":"Distribution - Automobile","pays":"Côte d'Ivoire","cours_veille":1745.0,"cours_ouverture":1730.0,"cours_cloture":1765.0,"volume":4499.0,"variation_pct":1.44,"indicateurs":{"ma5":1752.47,"ma5_fenetre":2,"ma20":1752.47,"ma20_fenetre":2,"momentum_pct":1.44,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.15,"raison":"Signal conserver (prudent) : variation du jour +1,44%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.6,"raison":"Signal conserver (équilibré) : variation du jour +1,44%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":1.03,"raison":"Signal renforcer (dynamique) : variation du jour +1,44%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"CIEC","nom":"CIE COTE D'IVOIRE","secteur":"Services publics - Énergie","pays":"Côte d'Ivoire","cours_veille":6985.0,"cours_ouverture":6905.0,"cours_cloture":6970.0,"volume":8790.0,"variation_pct":1.01,"indicateurs":{"ma5":6935.15,"ma5_fenetre":2,"ma20":6935.15,"ma20_fenetre":2,"momentum_pct":1.01,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.11,"raison":"Signal conserver (prudent) : variation du jour +1,01%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.42,"raison":"Signal conserver (équilibré) : variation du jour +1,01%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.73,"raison":"Signal renforcer (dynamique) : variation du jour +1,01%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"ECOC","nom":"ECOBANK COTE D'IVOIRE","secteur":"Finance - Banques","pays":"Côte d'Ivoire","cours_veille":16850.0,"cours_ouverture":16795.0,"cours_cloture":16830.0,"volume":6688.0,"variation_pct":0.21,"indicateurs":{"ma5":16812.37,"ma5_fenetre":2,"ma20":16812.37,"ma20_fenetre":2,"momentum_pct":0.21,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.02,"raison":"Signal conserver (prudent) : variation du jour +0,21%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.09,"raison":"Signal conserver (équilibré) : variation du jour +0,21%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.15,"raison":"Signal conserver (dynamique) : variation du jour +0,21%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"ETIT","nom":"Ecobank Transnational Incorporated TOGO","secteur":"Finance - Banques","pays":"Togo (panafricain)","cours_veille":66.0,"cours_ouverture":66.0,"cours_cloture":67.0,"volume":1710674.0,"variation_pct":1.52,"indicateurs":{"ma5":66.5,"ma5_fenetre":2,"ma20":66.5,"ma20_fenetre":2,"momentum_pct":1.52,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.16,"raison":"Signal conserver (prudent) : variation du jour +1,52%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.64,"raison":"Signal conserver (équilibré) : variation du jour +1,52%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":1.09,"raison":"Signal renforcer (dynamique) : variation du jour +1,52%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"FTSC","nom":"FILTISAC COTE D'IVOIRE","secteur":"Industrie - Textile","pays":"Côte d'Ivoire","cours_veille":2180.0,"cours_ouverture":2180.0,"cours_cloture":2150.0,"volume":3024.0,"variation_pct":-1.38,"indicateurs":{"ma5":2165.04,"ma5_fenetre":2,"ma20":2165.04,"ma20_fenetre":2,"momentum_pct":-1.38,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.89,"raison":"Signal conserver (prudent) : variation du jour -1,38%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ALLÉGER","score":-1.49,"raison":"Signal alléger (équilibré) : variation du jour -1,38%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-2.11,"raison":"Signal vendre (dynamique) : variation du jour -1,38%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"LNBB","nom":"LOTERIE NATIONALE DU BENIN","secteur":"Services - Jeux/Loterie","pays":"Bénin","cours_veille":4005.0,"cours_ouverture":4095.0,"cours_cloture":4075.0,"volume":5228.0,"variation_pct":-0.49,"indicateurs":{"ma5":4085.03,"ma5_fenetre":2,"ma20":4085.03,"ma20_fenetre":2,"momentum_pct":-0.49,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.32,"raison":"Signal conserver (prudent) : variation du jour -0,49%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.53,"raison":"Signal conserver (équilibré) : variation du jour -0,49%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":-0.75,"raison":"Signal conserver (dynamique) : variation du jour -0,49%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"NEIC","nom":"NEI-CEDA COTE D'IVOIRE","secteur":"Industrie - Édition/Imprimerie","pays":"Côte d'Ivoire","cours_veille":2500.0,"cours_ouverture":2475.0,"cours_cloture":2500.0,"volume":4196.0,"variation_pct":4.17,"indicateurs":{"ma5":2449.96,"ma5_fenetre":2,"ma20":2449.96,"ma20_fenetre":2,"momentum_pct":4.17,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"hausse_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.44,"raison":"Signal conserver (prudent) : variation du jour +4,17%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"RENFORCER","score":1.75,"raison":"Signal renforcer (équilibré) : variation du jour +4,17%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ACHETER","score":3.0,"raison":"Signal acheter (dynamique) : variation du jour +4,17%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"NSBC","nom":"NSIA BANQUE COTE D'IVOIRE","secteur":"Finance - Banques","pays":"Côte d'Ivoire","cours_veille":22900.0,"cours_ouverture":22905.0,"cours_cloture":22800.0,"volume":2995.0,"variation_pct":-0.44,"indicateurs":{"ma5":22850.38,"ma5_fenetre":2,"ma20":22850.38,"ma20_fenetre":2,"momentum_pct":-0.44,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.28,"raison":"Signal conserver (prudent) : variation du jour -0,44%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.48,"raison":"Signal conserver (équilibré) : variation du jour -0,44%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":-0.67,"raison":"Signal conserver (dynamique) : variation du jour -0,44%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"NTLC","nom":"NESTLE COTE D'IVOIRE","secteur":"Agro-industrie","pays":"Côte d'Ivoire","cours_veille":17000.0,"cours_ouverture":17000.0,"cours_cloture":16900.0,"volume":1138.0,"variation_pct":-0.59,"indicateurs":{"ma5":16950.15,"ma5_fenetre":2,"ma20":16950.15,"ma20_fenetre":2,"momentum_pct":-0.59,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.38,"raison":"Signal conserver (prudent) : variation du jour -0,59%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.64,"raison":"Signal conserver (équilibré) : variation du jour -0,59%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ALLÉGER","score":-0.9,"raison":"Signal alléger (dynamique) : variation du jour -0,59%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"ONTBF","nom":"ONATEL BURKINA FASO","secteur":"Télécommunications","pays":"Burkina Faso","cours_veille":2885.0,"cours_ouverture":2890.0,"cours_cloture":2890.0,"volume":6198.0,"variation_pct":0.17,"indicateurs":{"ma5":2887.55,"ma5_fenetre":2,"ma20":2887.55,"ma20_fenetre":2,"momentum_pct":0.17,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.02,"raison":"Signal conserver (prudent) : variation du jour +0,17%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.07,"raison":"Signal conserver (équilibré) : variation du jour +0,17%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.12,"raison":"Signal conserver (dynamique) : variation du jour +0,17%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"ORAC","nom":"ORANGE COTE D'IVOIRE","secteur":"Télécommunications","pays":"Côte d'Ivoire","cours_veille":21305.0,"cours_ouverture":21400.0,"cours_cloture":21200.0,"volume":8271.0,"variation_pct":0.88,"indicateurs":{"ma5":21107.53,"ma5_fenetre":2,"ma20":21107.53,"ma20_fenetre":2,"momentum_pct":0.88,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.09,"raison":"Signal conserver (prudent) : variation du jour +0,88%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.37,"raison":"Signal conserver (équilibré) : variation du jour +0,88%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.63,"raison":"Signal renforcer (dynamique) : variation du jour +0,88%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"ORGT","nom":"ORAGROUP TOGO","secteur":"Finance - Banques","pays":"Togo","cours_veille":3200.0,"cours_ouverture":3150.0,"cours_cloture":3190.0,"volume":8031.0,"variation_pct":2.08,"indicateurs":{"ma5":3157.5,"ma5_fenetre":2,"ma20":3157.5,"ma20_fenetre":2,"momentum_pct":2.08,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.22,"raison":"Signal conserver (prudent) : variation du jour +2,08%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"RENFORCER","score":0.87,"raison":"Signal renforcer (équilibré) : variation du jour +2,08%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ACHETER","score":1.49,"raison":"Signal acheter (dynamique) : variation du jour +2,08%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"PALC","nom":"PALM COTE D'IVOIRE","secteur":"Agro-industrie","pays":"Côte d'Ivoire","cours_veille":9630.0,"cours_ouverture":9600.0,"cours_cloture":9500.0,"volume":3567.0,"variation_pct":-1.35,"indicateurs":{"ma5":9565.0,"ma5_fenetre":2,"ma20":9565.0,"ma20_fenetre":2,"momentum_pct":-1.35,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.87,"raison":"Signal conserver (prudent) : variation du jour -1,35%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ALLÉGER","score":-1.46,"raison":"Signal alléger (équilibré) : variation du jour -1,35%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-2.07,"raison":"Signal vendre (dynamique) : variation du jour -1,35%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"PRSC","nom":"TRACTAFRIC MOTORS COTE D'IVOIRE","secteur":"Distribution - Automobile","pays":"Côte d'Ivoire","cours_veille":4470.0,"cours_ouverture":4470.0,"cours_cloture":4470.0,"volume":796.0,"variation_pct":0.0,"indicateurs":{"ma5":4470.0,"ma5_fenetre":2,"ma20":4470.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SAFC","nom":"SAFCA COTE D'IVOIRE","secteur":"Finance - Crédit-bail","pays":"Côte d'Ivoire","cours_veille":5700.0,"cours_ouverture":5700.0,"cours_cloture":5800.0,"volume":2616.0,"variation_pct":1.75,"indicateurs":{"ma5":5750.12,"ma5_fenetre":2,"ma20":5750.12,"ma20_fenetre":2,"momentum_pct":1.75,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.19,"raison":"Signal conserver (prudent) : variation du jour +1,75%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.73,"raison":"Signal conserver (équilibré) : variation du jour +1,75%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":1.26,"raison":"Signal renforcer (dynamique) : variation du jour +1,75%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SCRC","nom":"SUCRIVOIRE COTE D'IVOIRE","secteur":"Agro-industrie","pays":"Côte d'Ivoire","cours_veille":3380.0,"cours_ouverture":3385.0,"cours_cloture":3360.0,"volume":12137.0,"variation_pct":-0.59,"indicateurs":{"ma5":3369.97,"ma5_fenetre":2,"ma20":3369.97,"ma20_fenetre":2,"momentum_pct":-0.59,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.38,"raison":"Signal conserver (prudent) : variation du jour -0,59%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.64,"raison":"Signal conserver (équilibré) : variation du jour -0,59%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ALLÉGER","score":-0.9,"raison":"Signal alléger (dynamique) : variation du jour -0,59%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SDCC","nom":"SODE COTE D'IVOIRE","secteur":"Distribution","pays":"Côte d'Ivoire","cours_veille":12145.0,"cours_ouverture":12145.0,"cours_cloture":12000.0,"volume":2285.0,"variation_pct":-1.19,"indicateurs":{"ma5":12072.26,"ma5_fenetre":2,"ma20":12072.26,"ma20_fenetre":2,"momentum_pct":-1.19,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.77,"raison":"Signal conserver (prudent) : variation du jour -1,19%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-1.29,"raison":"Signal conserver (équilibré) : variation du jour -1,19%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-1.82,"raison":"Signal vendre (dynamique) : variation du jour -1,19%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SDSC","nom":"AFRICA GLOBAL LOGISTICS COTE D'IVOIRE","secteur":"Transport & Logistique","pays":"Côte d'Ivoire","cours_veille":2700.0,"cours_ouverture":2655.0,"cours_cloture":2700.0,"volume":6930.0,"variation_pct":-2.88,"indicateurs":{"ma5":2740.03,"ma5_fenetre":2,"ma20":2740.03,"ma20_fenetre":2,"momentum_pct":-2.88,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-1.85,"raison":"Signal conserver (prudent) : variation du jour -2,88%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"VENDRE","score":-3.11,"raison":"Signal vendre (équilibré) : variation du jour -2,88%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-4.41,"raison":"Signal vendre (dynamique) : variation du jour -2,88%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SEMC","nom":"EVIOSYS PACKAGING SIEM COTE D'IVOIRE","secteur":"Industrie - Emballage","pays":"Côte d'Ivoire","cours_veille":1550.0,"cours_ouverture":1550.0,"cours_cloture":1550.0,"volume":3802.0,"variation_pct":0.0,"indicateurs":{"ma5":1550.0,"ma5_fenetre":2,"ma20":1550.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SGBC","nom":"SOCIETE GENERALE COTE D'IVOIRE","secteur":"Finance - Banques","pays":"Côte d'Ivoire","cours_veille":38985.0,"cours_ouverture":39000.0,"cours_cloture":38985.0,"volume":7202.0,"variation_pct":-0.54,"indicateurs":{"ma5":39090.83,"ma5_fenetre":2,"ma20":39090.83,"ma20_fenetre":2,"momentum_pct":-0.54,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.35,"raison":"Signal conserver (prudent) : variation du jour -0,54%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-0.58,"raison":"Signal conserver (équilibré) : variation du jour -0,54%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"ALLÉGER","score":-0.83,"raison":"Signal alléger (dynamique) : variation du jour -0,54%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SHEC","nom":"VIVO ENERGY COTE D'IVOIRE","secteur":"Distribution - Énergie","pays":"Côte d'Ivoire","cours_veille":2480.0,"cours_ouverture":2460.0,"cours_cloture":2480.0,"volume":4144.0,"variation_pct":0.81,"indicateurs":{"ma5":2470.04,"ma5_fenetre":2,"ma20":2470.04,"ma20_fenetre":2,"momentum_pct":0.81,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.09,"raison":"Signal conserver (prudent) : variation du jour +0,81%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.34,"raison":"Signal conserver (équilibré) : variation du jour +0,81%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.58,"raison":"Signal renforcer (dynamique) : variation du jour +0,81%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SIBC","nom":"SOCIETE IVOIRIENNE DE BANQUE COTE D'IVOIRE","secteur":"Finance - Banques","pays":"Côte d'Ivoire","cours_veille":9000.0,"cours_ouverture":9000.0,"cours_cloture":9100.0,"volume":17227.0,"variation_pct":1.11,"indicateurs":{"ma5":9050.05,"ma5_fenetre":2,"ma20":9050.05,"ma20_fenetre":2,"momentum_pct":1.11,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.12,"raison":"Signal conserver (prudent) : variation du jour +1,11%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.47,"raison":"Signal conserver (équilibré) : variation du jour +1,11%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.8,"raison":"Signal renforcer (dynamique) : variation du jour +1,11%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SICC","nom":"SICOR COTE D'IVOIRE","secteur":"Agro-industrie","pays":"Côte d'Ivoire","cours_veille":8100.0,"cours_ouverture":8650.0,"cours_cloture":8005.0,"volume":353.0,"variation_pct":-7.46,"indicateurs":{"ma5":8327.66,"ma5_fenetre":2,"ma20":8327.66,"ma20_fenetre":2,"momentum_pct":-7.46,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"baisse_du_jour","recommandations":{"prudent":{"signal":"VENDRE","score":-4.8,"raison":"Signal vendre (prudent) : variation du jour -7,46%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"VENDRE","score":-8.06,"raison":"Signal vendre (équilibré) : variation du jour -7,46%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-11.42,"raison":"Signal vendre (dynamique) : variation du jour -7,46%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SIVC","nom":"ERIUM COTE D'IVOIRE","secteur":"Industrie - Gaz industriels","pays":"Côte d'Ivoire","cours_veille":2370.0,"cours_ouverture":2370.0,"cours_cloture":2380.0,"volume":3837.0,"variation_pct":0.42,"indicateurs":{"ma5":2375.02,"ma5_fenetre":2,"ma20":2375.02,"ma20_fenetre":2,"momentum_pct":0.42,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.04,"raison":"Signal conserver (prudent) : variation du jour +0,42%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.18,"raison":"Signal conserver (équilibré) : variation du jour +0,42%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.3,"raison":"Signal conserver (dynamique) : variation du jour +0,42%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SLBC","nom":"SOLIBRA COTE D'IVOIRE","secteur":"Agro-industrie - Boissons","pays":"Côte d'Ivoire","cours_veille":37005.0,"cours_ouverture":37010.0,"cours_cloture":37550.0,"volume":194.0,"variation_pct":1.47,"indicateurs":{"ma5":37278.01,"ma5_fenetre":2,"ma20":37278.01,"ma20_fenetre":2,"momentum_pct":1.47,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.16,"raison":"Signal conserver (prudent) : variation du jour +1,47%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.62,"raison":"Signal conserver (équilibré) : variation du jour +1,47%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":1.06,"raison":"Signal renforcer (dynamique) : variation du jour +1,47%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SMBC","nom":"SMB COTE D'IVOIRE","secteur":"Industrie","pays":"Côte d'Ivoire","cours_veille":16620.0,"cours_ouverture":16620.0,"cours_cloture":16800.0,"volume":7852.0,"variation_pct":1.08,"indicateurs":{"ma5":16710.25,"ma5_fenetre":2,"ma20":16710.25,"ma20_fenetre":2,"momentum_pct":1.08,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.11,"raison":"Signal conserver (prudent) : variation du jour +1,08%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.45,"raison":"Signal conserver (équilibré) : variation du jour +1,08%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.78,"raison":"Signal renforcer (dynamique) : variation du jour +1,08%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SNTS","nom":"SONATEL SENEGAL","secteur":"Télécommunications","pays":"Sénégal","cours_veille":36015.0,"cours_ouverture":36980.0,"cours_cloture":36500.0,"volume":7346.0,"variation_pct":-1.3,"indicateurs":{"ma5":36740.37,"ma5_fenetre":2,"ma20":36740.37,"ma20_fenetre":2,"momentum_pct":-1.3,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.84,"raison":"Signal conserver (prudent) : variation du jour -1,30%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ALLÉGER","score":-1.41,"raison":"Signal alléger (équilibré) : variation du jour -1,30%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-1.99,"raison":"Signal vendre (dynamique) : variation du jour -1,30%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SOGC","nom":"SOGB COTE D'IVOIRE","secteur":"Agro-industrie - Hévéa/Caoutchouc","pays":"Côte d'Ivoire","cours_veille":8175.0,"cours_ouverture":8200.0,"cours_cloture":8250.0,"volume":2807.0,"variation_pct":0.92,"indicateurs":{"ma5":8212.4,"ma5_fenetre":2,"ma20":8212.4,"ma20_fenetre":2,"momentum_pct":0.92,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.1,"raison":"Signal conserver (prudent) : variation du jour +0,92%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.39,"raison":"Signal conserver (équilibré) : variation du jour +0,92%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.66,"raison":"Signal renforcer (dynamique) : variation du jour +0,92%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"SPHC","nom":"SAPH COTE D'IVOIRE","secteur":"Agro-industrie - Hévéa/Caoutchouc","pays":"Côte d'Ivoire","cours_veille":9300.0,"cours_ouverture":9440.0,"cours_cloture":9250.0,"volume":6484.0,"variation_pct":-2.01,"indicateurs":{"ma5":9344.87,"ma5_fenetre":2,"ma20":9344.87,"ma20_fenetre":2,"momentum_pct":-2.01,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-1.29,"raison":"Signal conserver (prudent) : variation du jour -2,01%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"ALLÉGER","score":-2.17,"raison":"Signal alléger (équilibré) : variation du jour -2,01%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-3.08,"raison":"Signal vendre (dynamique) : variation du jour -2,01%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"STAC","nom":"SETAO COTE D'IVOIRE","secteur":"Industrie - BTP","pays":"Côte d'Ivoire","cours_veille":2595.0,"cours_ouverture":2595.0,"cours_cloture":2595.0,"volume":1737.0,"variation_pct":0.0,"indicateurs":{"ma5":2595.0,"ma5_fenetre":2,"ma20":2595.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"STBC","nom":"SITAB COTE D'IVOIRE","secteur":"Industrie - Tabac","pays":"Côte d'Ivoire","cours_veille":22900.0,"cours_ouverture":22900.0,"cours_cloture":22900.0,"volume":2108.0,"variation_pct":0.0,"indicateurs":{"ma5":22900.0,"ma5_fenetre":2,"ma20":22900.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"TTLC","nom":"TOTALENERGIES MARKETING COTE D'IVOIRE","secteur":"Distribution - Énergie","pays":"Côte d'Ivoire","cours_veille":3400.0,"cours_ouverture":3480.0,"cours_cloture":3400.0,"volume":12198.0,"variation_pct":0.0,"indicateurs":{"ma5":3400.0,"ma5_fenetre":2,"ma20":3400.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"TTLS","nom":"TOTALENERGIES MARKETING SENEGAL","secteur":"Distribution - Énergie","pays":"Sénégal","cours_veille":3800.0,"cours_ouverture":3920.0,"cours_cloture":3850.0,"volume":2759.0,"variation_pct":-1.28,"indicateurs":{"ma5":3874.96,"ma5_fenetre":2,"ma20":3874.96,"ma20_fenetre":2,"momentum_pct":-1.28,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":-0.82,"raison":"Signal conserver (prudent) : variation du jour -1,28%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":-1.38,"raison":"Signal conserver (équilibré) : variation du jour -1,28%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"VENDRE","score":-1.96,"raison":"Signal vendre (dynamique) : variation du jour -1,28%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"UNLC","nom":"UNILEVER COTE D'IVOIRE","secteur":"Agro-industrie - Consommation","pays":"Côte d'Ivoire","cours_veille":52200.0,"cours_ouverture":0.0,"cours_cloture":52200.0,"volume":0.0,"variation_pct":0.0,"indicateurs":{"ma5":52200.0,"ma5_fenetre":2,"ma20":52200.0,"ma20_fenetre":2,"momentum_pct":0.0,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (prudent) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (équilibré) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"CONSERVER","score":0.0,"raison":"Signal conserver (dynamique) : variation du jour 0,00%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}},{"symbole":"UNXC","nom":"UNIWAX COTE D'IVOIRE","secteur":"Industrie - Textile","pays":"Côte d'Ivoire","cours_veille":2480.0,"cours_ouverture":2470.0,"cours_cloture":2495.0,"volume":47040.0,"variation_pct":1.22,"indicateurs":{"ma5":2479.96,"ma5_fenetre":2,"ma20":2479.96,"ma20_fenetre":2,"momentum_pct":1.22,"momentum_fenetre":1,"volatilite_pct":null,"volume_ratio":null,"n_points":2,"confiance":"faible"},"tendance":"stable_du_jour","recommandations":{"prudent":{"signal":"CONSERVER","score":0.13,"raison":"Signal conserver (prudent) : variation du jour +1,22%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"equilibre":{"signal":"CONSERVER","score":0.51,"raison":"Signal conserver (équilibré) : variation du jour +1,22%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."},"dynamique":{"signal":"RENFORCER","score":0.88,"raison":"Signal renforcer (dynamique) : variation du jour +1,22%; historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe."}}}],"history":{"ABJC":[{"date":"veille","cloture":3350.0838,"volume":null},{"date":"2026-08-25","cloture":3600.0,"volume":5768.0}],"BICB":[{"date":"veille","cloture":8199.8069,"volume":null},{"date":"2026-08-25","cloture":8495.0,"volume":2683.0}],"BICC":[{"date":"veille","cloture":28798.7111,"volume":null},{"date":"2026-08-25","cloture":28600.0,"volume":652.0}],"BNBC":[{"date":"veille","cloture":1990.0,"volume":null},{"date":"2026-08-25","cloture":1990.0,"volume":3163.0}],"BOAB":[{"date":"veille","cloture":9985.0075,"volume":null},{"date":"2026-08-25","cloture":9990.0,"volume":9260.0}],"BOABF":[{"date":"veille","cloture":7600.228,"volume":null},{"date":"2026-08-25","cloture":8000.0,"volume":10184.0}],"BOAC":[{"date":"veille","cloture":12985.0,"volume":null},{"date":"2026-08-25","cloture":12985.0,"volume":10825.0}],"BOAM":[{"date":"veille","cloture":6490.2893,"volume":null},{"date":"2026-08-25","cloture":6550.0,"volume":6391.0}],"BOAN":[{"date":"veille","cloture":5280.0553,"volume":null},{"date":"2026-08-25","cloture":5345.0,"volume":4272.0}],"BOAS":[{"date":"veille","cloture":8000.0,"volume":null},{"date":"2026-08-25","cloture":8500.0,"volume":5658.0}],"CABC":[{"date":"veille","cloture":3640.0201,"volume":null},{"date":"2026-08-25","cloture":3620.0,"volume":426.0}],"CBIBF":[{"date":"veille","cloture":29998.9656,"volume":null},{"date":"2026-08-25","cloture":29000.0,"volume":991.0}],"CFAC":[{"date":"veille","cloture":1739.9448,"volume":null},{"date":"2026-08-25","cloture":1765.0,"volume":4499.0}],"CIEC":[{"date":"veille","cloture":6900.3069,"volume":null},{"date":"2026-08-25","cloture":6970.0,"volume":8790.0}],"ECOC":[{"date":"veille","cloture":16794.7311,"volume":null},{"date":"2026-08-25","cloture":16830.0,"volume":6688.0}],"ETIT":[{"date":"veille","cloture":65.9968,"volume":null},{"date":"2026-08-25","cloture":67.0,"volume":1710674.0}],"FTSC":[{"date":"veille","cloture":2180.0852,"volume":null},{"date":"2026-08-25","cloture":2150.0,"volume":3024.0}],"LNBB":[{"date":"veille","cloture":4095.0658,"volume":null},{"date":"2026-08-25","cloture":4075.0,"volume":5228.0}],"NEIC":[{"date":"veille","cloture":2399.9232,"volume":null},{"date":"2026-08-25","cloture":2500.0,"volume":4196.0}],"NSBC":[{"date":"veille","cloture":22900.7634,"volume":null},{"date":"2026-08-25","cloture":22800.0,"volume":2995.0}],"NTLC":[{"date":"veille","cloture":17000.3018,"volume":null},{"date":"2026-08-25","cloture":16900.0,"volume":1138.0}],"ONTBF":[{"date":"veille","cloture":2885.0953,"volume":null},{"date":"2026-08-25","cloture":2890.0,"volume":6198.0}],"ORAC":[{"date":"veille","cloture":21015.0674,"volume":null},{"date":"2026-08-25","cloture":21200.0,"volume":8271.0}],"ORGT":[{"date":"veille","cloture":3125.0,"volume":null},{"date":"2026-08-25","cloture":3190.0,"volume":8031.0}],"PALC":[{"date":"veille","cloture":9630.0051,"volume":null},{"date":"2026-08-25","cloture":9500.0,"volume":3567.0}],"PRSC":[{"date":"veille","cloture":4470.0,"volume":null},{"date":"2026-08-25","cloture":4470.0,"volume":796.0}],"SAFC":[{"date":"veille","cloture":5700.2457,"volume":null},{"date":"2026-08-25","cloture":5800.0,"volume":2616.0}],"SCRC":[{"date":"veille","cloture":3379.9417,"volume":null},{"date":"2026-08-25","cloture":3360.0,"volume":12137.0}],"SDCC":[{"date":"veille","cloture":12144.5198,"volume":null},{"date":"2026-08-25","cloture":12000.0,"volume":2285.0}],"SDSC":[{"date":"veille","cloture":2780.0659,"volume":null},{"date":"2026-08-25","cloture":2700.0,"volume":6930.0}],"SEMC":[{"date":"veille","cloture":1550.0,"volume":null},{"date":"2026-08-25","cloture":1550.0,"volume":3802.0}],"SGBC":[{"date":"veille","cloture":39196.662,"volume":null},{"date":"2026-08-25","cloture":38985.0,"volume":7202.0}],"SHEC":[{"date":"veille","cloture":2460.0734,"volume":null},{"date":"2026-08-25","cloture":2480.0,"volume":4144.0}],"SIBC":[{"date":"veille","cloture":9000.0989,"volume":null},{"date":"2026-08-25","cloture":9100.0,"volume":17227.0}],"SICC":[{"date":"veille","cloture":8650.3134,"volume":null},{"date":"2026-08-25","cloture":8005.0,"volume":353.0}],"SIVC":[{"date":"veille","cloture":2370.0458,"volume":null},{"date":"2026-08-25","cloture":2380.0,"volume":3837.0}],"SLBC":[{"date":"veille","cloture":37006.0116,"volume":null},{"date":"2026-08-25","cloture":37550.0,"volume":194.0}],"SMBC":[{"date":"veille","cloture":16620.4986,"volume":null},{"date":"2026-08-25","cloture":16800.0,"volume":7852.0}],"SNTS":[{"date":"veille","cloture":36980.7497,"volume":null},{"date":"2026-08-25","cloture":36500.0,"volume":7346.0}],"SOGC":[{"date":"veille","cloture":8174.7919,"volume":null},{"date":"2026-08-25","cloture":8250.0,"volume":2807.0}],"SPHC":[{"date":"veille","cloture":9439.7387,"volume":null},{"date":"2026-08-25","cloture":9250.0,"volume":6484.0}],"STAC":[{"date":"veille","cloture":2595.0,"volume":null},{"date":"2026-08-25","cloture":2595.0,"volume":1737.0}],"STBC":[{"date":"veille","cloture":22900.0,"volume":null},{"date":"2026-08-25","cloture":22900.0,"volume":2108.0}],"TTLC":[{"date":"veille","cloture":3400.0,"volume":null},{"date":"2026-08-25","cloture":3400.0,"volume":12198.0}],"TTLS":[{"date":"veille","cloture":3899.919,"volume":null},{"date":"2026-08-25","cloture":3850.0,"volume":2759.0}],"UNLC":[{"date":"veille","cloture":52200.0,"volume":null},{"date":"2026-08-25","cloture":52200.0,"volume":0.0}],"UNXC":[{"date":"veille","cloture":2464.9279,"volume":null},{"date":"2026-08-25","cloture":2495.0,"volume":47040.0}]}}</script>
+<script id="user-data" type="application/json">{"riskProfile":"equilibre","portfolio":[],"watchlist":[]}</script>
+<script>
+/* BRVM Conseil — logique application (rendu, persistance, interactions).
+   Ce fichier est injecté tel quel dans un <script type="text/plain" id="app-src">
+   et exécuté via new Function() par le petit script d'amorçage. Il ne dépend
+   d'aucune bibliothèque externe. */
+(function () {
+  "use strict";
+
+  var SIGNAL_META = {
+    ACHETER:   { label: "Acheter",   tone: "good",    order: 5 },
+    RENFORCER: { label: "Renforcer", tone: "good-soft",order: 4 },
+    CONSERVER: { label: "Conserver", tone: "neutral", order: 3 },
+    SURVEILLER:{ label: "Surveiller",tone: "warning", order: 3 },
+    "ALLÉGER": { label: "Alléger",   tone: "serious", order: 2 },
+    VENDRE:    { label: "Vendre",    tone: "critical",order: 1 }
+  };
+
+  var PROFILES = [
+    { key: "prudent", label: "Prudent", desc: "Priorité à la préservation du capital : ne pousse jamais à l'achat sur la foi d'une seule séance, réagit vite pour alléger en cas de baisse marquée." },
+    { key: "equilibre", label: "Équilibré", desc: "Compromis entre momentum et volatilité : signaux modérés, sensibles à la confirmation par le volume." },
+    { key: "dynamique", label: "Dynamique", desc: "Recherche la tendance et le momentum, tolère plus de volatilité, réagit dès qu'un mouvement se confirme par le volume." }
+  ];
+
+  var state = {
+    market: null,
+    user: null,
+    ui: { search: "", secteur: "TOUS", signal: "TOUS", sort: "symbole", sortDir: 1, expanded: null, methodOpen: false }
+  };
+
+  // ---------------------------------------------------------------- utils
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    for (var k in attrs) {
+      if (attrs[k] == null) continue;
+      if (k === "class") e.className = attrs[k];
+      else if (k === "html") e.innerHTML = attrs[k];
+      else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) {
+      if (c == null) return;
+      if (typeof c === "string") e.appendChild(document.createTextNode(c));
+      else e.appendChild(c);
+    });
+    return e;
+  }
+
+  function fmtNum(x, decimals) {
+    if (x == null || isNaN(x)) return "—";
+    var n = Number(x);
+    var parts = n.toFixed(decimals == null ? 0 : decimals).split(".");
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return parts.join(",");
+  }
+  function fmtFCFA(x) { return x == null ? "—" : fmtNum(x, 0) + " FCFA"; }
+  function fmtPct(x) {
+    if (x == null || isNaN(x)) return "—";
+    var s = x > 0 ? "+" : "";
+    return s + fmtNum(x, 2) + " %";
+  }
+  function pctClass(x) {
+    if (x == null) return "muted";
+    if (x > 0.001) return "up";
+    if (x < -0.001) return "down";
+    return "flat";
+  }
+  function todayIso() {
+    var d = new Date();
+    return d.toISOString().slice(0, 10);
+  }
+  function debounce(fn, ms) {
+    var t = null;
+    return function () {
+      var args = arguments;
+      clearTimeout(t);
+      t = setTimeout(function () { fn.apply(null, args); }, ms);
+    };
+  }
+
+  function findStock(symb) {
+    return (state.market.stocks || []).filter(function (s) { return s.symbole === symb; })[0] || null;
+  }
+
+  // ------------------------------------------------------------ rendering
+  function signalBadge(sig) {
+    var meta = SIGNAL_META[sig] || { label: sig, tone: "neutral" };
+    return el("span", { class: "badge tone-" + meta.tone }, [meta.label]);
+  }
+
+  function sparkline(points) {
+    if (!points || points.length < 2) return el("span", { class: "muted small" }, ["historique en cours"]);
+    var closes = points.map(function (p) { return p.cloture; }).filter(function (v) { return v != null; });
+    if (closes.length < 2) return el("span", { class: "muted small" }, ["—"]);
+    var w = 92, h = 28, pad = 3;
+    var min = Math.min.apply(null, closes), max = Math.max.apply(null, closes);
+    var range = max - min || 1;
+    var step = (w - pad * 2) / (closes.length - 1);
+    var d = closes.map(function (v, i) {
+      var x = pad + i * step;
+      var y = h - pad - ((v - min) / range) * (h - pad * 2);
+      return (i === 0 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+    var last = closes[closes.length - 1], first = closes[0];
+    var up = last >= first;
+    var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '" class="spark" aria-hidden="true">' +
+      '<path d="' + d + '" fill="none" stroke="' + (up ? "var(--up)" : "var(--down)") + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg>';
+    var wrap = el("span", { class: "spark-wrap", html: svg });
+    return wrap;
+  }
+
+  function renderHeader() {
+    var m = state.market;
+    var header = el("header", { class: "app-header" }, [
+      el("div", { class: "brand" }, [
+        el("span", { class: "brand-mark" }, ["BC"]),
+        el("div", {}, [
+          el("h1", {}, ["BRVM Conseil"]),
+          el("p", { class: "tagline" }, ["Analyse quotidienne et recommandations sur les valeurs de la Bourse Régionale des Valeurs Mobilières"])
+        ])
+      ]),
+      el("div", { class: "header-meta" }, [
+        el("div", { class: "meta-line" }, [m.asOfLabel || "—"]),
+        el("div", { class: "meta-line muted small" }, ["Mis à jour à " + (m.lastUpdate ? new Date(m.lastUpdate).toLocaleString("fr-FR") : "—")])
+      ])
+    ]);
+    return header;
+  }
+
+  function renderIndices() {
+    var wrap = el("div", { class: "indices-row" });
+    (state.market.indices || []).forEach(function (ix) {
+      wrap.appendChild(el("div", { class: "stat-tile" }, [
+        el("div", { class: "stat-label" }, [ix.nom.replace("BRVM - ", "BRVM ").replace("BRVM-", "BRVM ")]),
+        el("div", { class: "stat-value" }, [fmtNum(ix.cloture, 2)]),
+        el("div", { class: "stat-delta " + pctClass(ix.variation_pct) }, [fmtPct(ix.variation_pct)])
+      ]));
+    });
+    return wrap;
+  }
+
+  function renderSynthese() {
+    var s = state.market.stats || {};
+    var box = el("section", { class: "panel synthese" }, [
+      el("h2", {}, ["Synthèse du jour"]),
+      renderIndices(),
+      el("p", { class: "synthese-text" }, [state.market.syntheseDuJour || ""]),
+      el("div", { class: "breadth-row" }, [
+        el("span", { class: "breadth up" }, [s.hausses + " en hausse"]),
+        el("span", { class: "breadth down" }, [s.baisses + " en baisse"]),
+        el("span", { class: "breadth flat" }, [s.stables + " stable(s)"])
+      ]),
+      el("p", { class: "muted small" }, [
+        "Maturité de l'historique : " + (s.dataMaturityDays || 0) + " séance(s) suivie(s). " +
+        (s.dataMaturityDays < 20 ? "Les moyennes mobiles et la volatilité s'affinent chaque jour de bourse." : "Historique suffisant pour des moyennes mobiles fiables.")
+      ])
+    ]);
+    return box;
+  }
+
+  function renderMethodology() {
+    var wrap = el("section", { class: "panel method" });
+    var btn = el("button", { class: "link-btn", onclick: function () { state.ui.methodOpen = !state.ui.methodOpen; render(); } },
+      [state.ui.methodOpen ? "− Masquer la méthodologie" : "+ Comment sont calculées les recommandations ?"]);
+    wrap.appendChild(btn);
+    if (state.ui.methodOpen) {
+      wrap.appendChild(el("div", { class: "method-body" }, [
+        el("p", {}, ["Chaque valeur est notée à partir de trois ingrédients calculés sur l'historique réellement observé depuis la mise en service de l'outil : le momentum (variation récente du cours), la volatilité (écart-type des variations journalières) et la confirmation par le volume (volume du jour comparé à la moyenne récente)."]),
+        el("p", {}, ["Ces trois signaux sont pondérés différemment selon le profil : un profil ", el("b", {}, ["prudent"]), " amortit fortement la conviction d'achat tant que l'historique est court et ne recommande jamais d'acheter sur la foi d'une seule séance ; un profil ", el("b", {}, ["dynamique"]), " réagit plus vite au momentum et au volume, quitte à accepter plus de volatilité."]),
+        el("p", {}, ["Les données proviennent des pages officielles et publiques de brvm.org (cours du jour et indices), récupérées après la clôture de chaque séance. L'historique se reconstitue jour après jour — plus l'outil est utilisé longtemps, plus les moyennes mobiles et la volatilité deviennent fiables."]),
+        el("p", { class: "disclaimer" }, ["Ceci est un outil d'aide à la décision basé sur des règles quantitatives transparentes. Ce n'est pas un conseil en investissement réglementé et cela ne remplace pas l'avis d'un conseiller agréé auprès du CREPMF. Les marchés actions comportent un risque de perte en capital."])
+      ]));
+    }
+    return wrap;
+  }
+
+  function renderProfileSwitcher() {
+    var box = el("section", { class: "panel profile-switcher" }, [
+      el("h2", {}, ["Votre profil de risque"])
+    ]);
+    var row = el("div", { class: "profile-options" });
+    PROFILES.forEach(function (p) {
+      var active = state.user.riskProfile === p.key;
+      row.appendChild(el("button", {
+        class: "profile-btn" + (active ? " active" : ""),
+        onclick: function () { setRiskProfile(p.key); }
+      }, [p.label]));
+    });
+    box.appendChild(row);
+    var cur = PROFILES.filter(function (p) { return p.key === state.user.riskProfile; })[0];
+    box.appendChild(el("p", { class: "muted small profile-desc" }, [cur ? cur.desc : ""]));
+    return box;
+  }
+
+  function positionRow(pos) {
+    var s = findStock(pos.symbole);
+    var cours = s ? s.cours_cloture : null;
+    var valeur = cours != null ? cours * pos.quantite : null;
+    var cout = pos.prix_achat * pos.quantite;
+    var pnl = valeur != null ? valeur - cout : null;
+    var pnlPct = pnl != null && cout ? (pnl / cout) * 100 : null;
+    var reco = s ? s.recommandations[state.user.riskProfile] : null;
+    return el("tr", {}, [
+      el("td", { class: "mono" }, [pos.symbole]),
+      el("td", { class: "name-cell" }, [s ? s.nom : pos.symbole]),
+      el("td", { class: "num" }, [fmtNum(pos.quantite, 0)]),
+      el("td", { class: "num" }, [fmtFCFA(pos.prix_achat)]),
+      el("td", { class: "num" }, [fmtFCFA(cours)]),
+      el("td", { class: "num" }, [fmtFCFA(valeur)]),
+      el("td", { class: "num " + pctClass(pnl) }, [pnl == null ? "—" : (pnl >= 0 ? "+" : "") + fmtNum(pnl, 0) + " (" + fmtPct(pnlPct) + ")"]),
+      el("td", {}, [reco ? signalBadge(reco.signal) : "—"]),
+      el("td", {}, [el("button", { class: "icon-btn", title: "Retirer", onclick: function () { removePosition(pos); } }, ["✕"])])
+    ]);
+  }
+  
+  function renderPortfolio() {
+    var box = el("section", { class: "panel" }, [el("h2", {}, ["Mon portefeuille"])]);
+    var portfolio = state.user.portfolio || [];
+    if (portfolio.length) {
+      var totalCout = 0, totalVal = 0;
+      portfolio.forEach(function (pos) {
+        var s = findStock(pos.symbole);
+        totalCout += pos.prix_achat * pos.quantite;
+        if (s && s.cours_cloture != null) totalVal += s.cours_cloture * pos.quantite;
+      });
+      var totalPnl = totalVal - totalCout;
+      var totalPnlPct = totalCout ? (totalPnl / totalCout) * 100 : null;
+      box.appendChild(el("div", { class: "portfolio-summary" }, [
+        el("div", { class: "stat-tile" }, [el("div", { class: "stat-label" }, ["Valeur totale"]), el("div", { class: "stat-value" }, [fmtFCFA(totalVal)])]),
+        el("div", { class: "stat-tile" }, [el("div", { class: "stat-label" }, ["Coût d'acquisition"]), el("div", { class: "stat-value" }, [fmtFCFA(totalCout)])]),
+        el("div", { class: "stat-tile" }, [el("div", { class: "stat-label" }, ["Plus/moins-value"]), el("div", { class: "stat-value " + pctClass(totalPnl) }, [(totalPnl >= 0 ? "+" : "") + fmtNum(totalPnl, 0) + " FCFA (" + fmtPct(totalPnlPct) + ")"])])
+      ]));
+      var tableWrap = el("div", { class: "table-scroll" });
+      var table = el("table", { class: "data-table" }, [
+        el("thead", {}, [el("tr", {}, ["Symbole", "Nom", "Qté", "PRU", "Cours", "Valorisation", "+/- value", "Signal", ""].map(function (h) { return el("th", {}, [h]); }))]),
+        el("tbody", {}, portfolio.map(positionRow))
+      ]);
+      tableWrap.appendChild(table);
+      box.appendChild(tableWrap);
+    } else {
+      box.appendChild(el("p", { class: "muted small" }, ["Aucune position enregistrée. Ajoutez vos actions détenues pour suivre votre plus/moins-value et recevoir des signaux personnalisés."]));
+    }
+    box.appendChild(renderAddPositionForm());
+    return box;
+  }
+
+  function symbolOptions(selectedFirst) {
+    var syms = (state.market.stocks || []).slice().sort(function (a, b) { return a.symbole < b.symbole ? -1 : 1; });
+    return syms.map(function (s) { return el("option", { value: s.symbole }, [s.symbole + " — " + s.nom]); });
+  }
+
+  function renderAddPositionForm() {
+    var symbSel = el("select", { class: "input" }, symbolOptions());
+    var qtyInput = el("input", { class: "input", type: "number", min: "1", step: "1", placeholder: "Quantité" });
+    var priceInput = el("input", { class: "input", type: "number", min: "0", step: "1", placeholder: "Prix d'achat (FCFA)" });
+    var dateInput = el("input", { class: "input", type: "date", value: todayIso() });
+    var form = el("form", {
+      class: "add-form",
+      onsubmit: function (ev) {
+        ev.preventDefault();
+        var symb = symbSel.value;
+        var qty = parseFloat(qtyInput.value);
+        var price = parseFloat(priceInput.value);
+        if (!symb || !qty || qty <= 0 || !price || price <= 0) return;
+        addPosition({ symbole: symb, quantite: qty, prix_achat: price, date_achat: dateInput.value || todayIso() });
+        qtyInput.value = ""; priceInput.value = "";
+      }
+    }, [
+      symbSel, qtyInput, priceInput, dateInput,
+      el("button", { class: "btn", type: "submit" }, ["Ajouter la position"])
+    ]);
+    return form;
+  }
+
+  function renderWatchlist() {
+    var box = el("section", { class: "panel" }, [el("h2", {}, ["Ma liste de suivi"])]);
+    var watch = state.user.watchlist || [];
+    if (watch.length) {
+      var tableWrap = el("div", { class: "table-scroll" });
+      var table = el("table", { class: "data-table" }, [
+        el("thead", {}, [el("tr", {}, ["Symbole", "Nom", "Cours", "Variation", "Signal", ""].map(function (h) { return el("th", {}, [h]); }))]),
+        el("tbody", {}, watch.map(function (symb) {
+          var s = findStock(symb);
+          var reco = s ? s.recommandations[state.user.riskProfile] : null;
+          return el("tr", {}, [
+            el("td", { class: "mono" }, [symb]),
+            el("td", { class: "name-cell" }, [s ? s.nom : symb]),
+            el("td", { class: "num" }, [s ? fmtFCFA(s.cours_cloture) : "—"]),
+            el("td", { class: "num " + (s ? pctClass(s.variation_pct) : "") }, [s ? fmtPct(s.variation_pct) : "—"]),
+            el("td", {}, [reco ? signalBadge(reco.signal) : "—"]),
+            el("td", {}, [el("button", { class: "icon-btn", title: "Retirer", onclick: function () { removeWatch(symb); } }, ["✕"])])
+          ]);
+        }))
+      ]);
+      tableWrap.appendChild(table);
+      box.appendChild(tableWrap);
+    } else {
+      box.appendChild(el("p", { class: "muted small" }, ["Aucune valeur suivie. Ajoutez des actions à surveiller sans forcément les détenir."]));
+    }
+    var symbSel = el("select", { class: "input" }, symbolOptions());
+    box.appendChild(el("form", {
+      class: "add-form",
+      onsubmit: function (ev) { ev.preventDefault(); addWatch(symbSel.value); }
+    }, [symbSel, el("button", { class: "btn", type: "submit" }, ["Ajouter à la liste"])]));
+    return box;
+  }
+
+  function renderMarketTable() {
+    var box = el("section", { class: "panel market-panel" }, [
+      el("h2", {}, ["Marché — toutes les valeurs (" + (state.market.stocks || []).length + ")"]),
+      el("p", { class: "muted small", style: "margin:-8px 0 14px" }, ["Colonne Signal calculée pour le profil " + labelForProfile(state.user.riskProfile).toLowerCase() + "."])
+    ]);
+
+    var secteurs = Array.from(new Set((state.market.stocks || []).map(function (s) { return s.secteur; }))).sort();
+    var searchInput = el("input", { class: "input", type: "search", placeholder: "Rechercher (symbole ou nom)…", value: state.ui.search });
+    searchInput.addEventListener("input", debounce(function () { state.ui.search = searchInput.value; render(); }, 200));
+    var secteurSel = el("select", { class: "input" }, [el("option", { value: "TOUS" }, ["Tous secteurs"])].concat(
+      secteurs.map(function (s) { return el("option", { value: s, selected: s === state.ui.secteur ? "selected" : null }, [s]); })
+    ));
+    secteurSel.value = state.ui.secteur;
+    secteurSel.addEventListener("change", function () { state.ui.secteur = secteurSel.value; render(); });
+    var signalSel = el("select", { class: "input" }, [el("option", { value: "TOUS" }, ["Tous signaux"])].concat(
+      Object.keys(SIGNAL_META).map(function (s) { return el("option", { value: s }, [SIGNAL_META[s].label]); })
+    ));
+    signalSel.value = state.ui.signal;
+    signalSel.addEventListener("change", function () { state.ui.signal = signalSel.value; render(); });
+
+    box.appendChild(el("div", { class: "filters-row" }, [searchInput, secteurSel, signalSel]));
+
+    var rows = (state.market.stocks || []).filter(function (s) {
+      if (state.ui.secteur !== "TOUS" && s.secteur !== state.ui.secteur) return false;
+      if (state.ui.signal !== "TOUS") {
+        var reco = s.recommandations[state.user.riskProfile];
+        if (!reco || reco.signal !== state.ui.signal) return false;
+      }
+      if (state.ui.search) {
+        var q = state.ui.search.toLowerCase();
+        if (s.symbole.toLowerCase().indexOf(q) === -1 && s.nom.toLowerCase().indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+
+    var sortKey = state.ui.sort, dir = state.ui.sortDir;
+    rows = rows.slice().sort(function (a, b) {
+      var av, bv;
+      if (sortKey === "variation_pct") { av = a.variation_pct; bv = b.variation_pct; }
+      else if (sortKey === "signal") {
+        av = (SIGNAL_META[a.recommandations[state.user.riskProfile].signal] || {}).order || 0;
+        bv = (SIGNAL_META[b.recommandations[state.user.riskProfile].signal] || {}).order || 0;
+      } else if (sortKey === "cours") { av = a.cours_cloture; bv = b.cours_cloture; }
+      else { av = a.symbole; bv = b.symbole; }
+      if (av == null) av = -Infinity; if (bv == null) bv = -Infinity;
+      if (av < bv) return -1 * dir; if (av > bv) return 1 * dir; return 0;
+    });
+
+    function th(label, key) {
+      var active = state.ui.sort === key;
+      return el("th", {
+        class: "sortable" + (active ? " active" : ""),
+        onclick: function () {
+          if (state.ui.sort === key) state.ui.sortDir *= -1; else { state.ui.sort = key; state.ui.sortDir = key === "variation_pct" || key === "signal" ? -1 : 1; }
+          render();
+        }
+      }, [label + (active ? (dir === 1 ? " ▴" : " ▾") : "")]);
+    }
+
+    var tableWrap = el("div", { class: "table-scroll" });
+    var table = el("table", { class: "data-table market-table" }, [
+      el("thead", {}, [el("tr", {}, [
+        th("Symbole", "symbole"), el("th", { class: "col-secteur" }, ["Secteur"]), th("Cours (FCFA)", "cours"), th("Var. jour", "variation_pct"),
+        el("th", { class: "col-tendance" }, ["Tendance"]), th("Signal", "signal"), el("th", {}, [""])
+      ])]),
+      el("tbody", {}, rows.reduce(function (acc, s) { return acc.concat(marketRow(s)); }, []))
+    ]);
+    tableWrap.appendChild(table);
+    box.appendChild(tableWrap);
+    if (!rows.length) box.appendChild(el("p", { class: "muted small" }, ["Aucune valeur ne correspond à ces filtres."]));
+    return box;
+  }
+
+  function labelForProfile(key) {
+    var p = PROFILES.filter(function (p) { return p.key === key; })[0];
+    return p ? p.label : key;
+  }
+
+  function marketRow(s) {
+    var reco = s.recommandations[state.user.riskProfile];
+    var expanded = state.ui.expanded === s.symbole;
+    var rows = [el("tr", { class: "row-main", onclick: function () { state.ui.expanded = expanded ? null : s.symbole; render(); } }, [
+      el("td", { class: "mono" }, [s.symbole]),
+      el("td", { class: "small col-secteur" }, [s.secteur]),
+      el("td", { class: "num" }, [fmtNum(s.cours_cloture, 0)]),
+      el("td", { class: "num " + pctClass(s.variation_pct) }, [fmtPct(s.variation_pct)]),
+      el("td", { class: "col-tendance" }, [sparkline(state.market.history[s.symbole])]),
+      el("td", {}, [signalBadge(reco.signal)]),
+      el("td", { class: "expand-caret" }, [expanded ? "−" : "+"])
+    ])];
+    if (expanded) {
+      var ind = s.indicateurs;
+      rows.push(el("tr", { class: "row-detail" }, [el("td", { colspan: "7" }, [
+        el("div", { class: "detail-grid" }, [
+          el("div", {}, [el("b", {}, [s.nom]), el("div", { class: "muted small" }, [s.pays])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Ouverture / Clôture"]), el("div", {}, [fmtFCFA(s.cours_ouverture) + " → " + fmtFCFA(s.cours_cloture)])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Volume"]), el("div", {}, [fmtNum(s.volume, 0)])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Momentum"]), el("div", {}, [ind.momentum_pct != null ? fmtPct(ind.momentum_pct) + " (" + ind.momentum_fenetre + "j)" : "—"])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Volatilité"]), el("div", {}, [ind.volatilite_pct != null ? fmtNum(ind.volatilite_pct, 1) + " %" : "—"])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Volume vs moyenne"]), el("div", {}, [ind.volume_ratio != null ? fmtNum(ind.volume_ratio, 2) + "x" : "—"])])
+        ]),
+        el("div", { class: "reco-all" }, PROFILES.map(function (p) {
+          var r = s.recommandations[p.key];
+          return el("div", { class: "reco-line" }, [el("b", {}, [p.label + " : "]), signalBadge(r.signal), el("span", { class: "muted small" }, [" " + r.raison])]);
+        }))
+      ])]));
+    }
+    return rows;
+  }
+
+  function renderRoot() {
+    var root = document.getElementById("root");
+    root.innerHTML = "";
+    root.appendChild(renderHeader());
+    var main = el("main", { class: "layout" });
+    var left = el("div", { class: "col-main" }, [renderSynthese(), renderMethodology(), renderMarketTable()]);
+    var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderPortfolio(), renderWatchlist()]);
+    main.appendChild(left);
+    main.appendChild(right);
+    root.appendChild(main);
+    root.appendChild(el("footer", { class: "app-footer" }, [
+      el("p", {}, ["Source des données : pages publiques brvm.org (cours du jour, indices), mises à jour après la clôture de chaque séance de bourse."]),
+      el("p", { class: "disclaimer" }, ["Outil d'aide à la décision à titre informatif, ne constituant pas un conseil en investissement financier réglementé. Investir en actions comporte un risque de perte en capital."])
+    ]));
+  }
+
+  function render() { renderRoot(); }
+
+  // -------------------------------------------------------- state mutators
+  function setRiskProfile(key) { state.user.riskProfile = key; render(); saveUserState(); }
+  function addPosition(pos) {
+    state.user.portfolio = state.user.portfolio || [];
+    state.user.portfolio.push(pos);
+    render(); saveUserState();
+  }
+  function removePosition(pos) {
+    state.user.portfolio = (state.user.portfolio || []).filter(function (p) { return p !== pos; });
+    render(); saveUserState();
+  }
+  function addWatch(symb) {
+    if (!symb) return;
+    state.user.watchlist = state.user.watchlist || [];
+    if (state.user.watchlist.indexOf(symb) === -1) state.user.watchlist.push(symb);
+    render(); saveUserState();
+  }
+  function removeWatch(symb) {
+    state.user.watchlist = (state.user.watchlist || []).filter(function (s) { return s !== symb; });
+    render(); saveUserState();
+  }
+
+  // ------------------------------------------------- persistance locale
+  // Version autonome (hors claude.ai) : le profil/portefeuille/watchlist
+  // sont sauvegardés dans le localStorage du navigateur. Comme cette
+  // sauvegarde vit dans le navigateur (pas dans la page), elle survit
+  // automatiquement à la reconstruction quotidienne de index.html par la
+  // tâche planifiée (GitHub Actions) — au chargement, on préfère toujours
+  // la version localStorage si elle existe, aux données par défaut
+  // embarquées dans la page.
+  var STORAGE_KEY = "brvm-conseil-user-v1";
+  var saveUserState = debounce(function () {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.user));
+    } catch (e) {
+      // Stockage indisponible (navigation privée, quota, etc.) : l'appli
+      // continue de fonctionner pour la session en cours, simplement sans
+      // persistance entre deux visites.
+    }
+  }, 300);
+
+  function loadUserState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) { /* ignore et retombe sur les données par défaut */ }
+    try {
+      return JSON.parse(document.getElementById("user-data").textContent);
+    } catch (e) {
+      return { riskProfile: "equilibre", portfolio: [], watchlist: [] };
+    }
+  }
+
+  // ---------------------------------------------------------------- init
+  function init() {
+    try {
+      state.market = JSON.parse(document.getElementById("market-data").textContent);
+    } catch (e) { state.market = { indices: [], stocks: [], history: {}, stats: {} }; }
+    state.user = loadUserState();
+    if (!state.user.riskProfile) state.user.riskProfile = "equilibre";
+    if (!state.user.portfolio) state.user.portfolio = [];
+    if (!state.user.watchlist) state.user.watchlist = [];
+    render();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+
+</script>
+</body></html>
