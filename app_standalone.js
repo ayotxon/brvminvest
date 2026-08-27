@@ -14,6 +14,13 @@
     VENDRE:    { label: "Vendre",    tone: "critical",order: 1 }
   };
 
+  var ALIGNEMENT_META = {
+    haussiere_confirmee: { label: "Haussière confirmée", detail: "court, moyen et long terme alignés à la hausse", tone: "good" },
+    baissiere_confirmee: { label: "Baissière confirmée", detail: "court, moyen et long terme alignés à la baisse", tone: "critical" },
+    mixte:               { label: "Mitigée",             detail: "les horizons ne racontent pas la même histoire", tone: "warning" },
+    indeterminee:        { label: "Indéterminée",        detail: "historique encore insuffisant sur assez d'horizons", tone: "neutral" }
+  };
+
   var PROFILES = [
     { key: "prudent", label: "Prudent", desc: "Priorité à la préservation du capital : ne pousse jamais à l'achat sur la foi d'une seule séance, réagit vite pour alléger en cas de baisse marquée." },
     { key: "equilibre", label: "Équilibré", desc: "Compromis entre momentum et volatilité : signaux modérés, sensibles à la confirmation par le volume." },
@@ -109,6 +116,45 @@
     return wrap;
   }
 
+  // Tracé intrajournalier : contrairement à sparkline() (un point par
+  // séance, historique long terme), celui-ci trace les relevés successifs
+  // (toutes les ~20 min pendant les heures de bourse) de la fenêtre
+  // glissante récente stockée dans intraday.json / market.intraday.
+  function intradaySparkline(points, onlyDate) {
+    var pts = (points || []).filter(function (p) { return !onlyDate || p.date === onlyDate; });
+    if (pts.length < 2) {
+      return el("p", { class: "muted small" }, [
+        pts.length === 1
+          ? "Un seul relevé aujourd'hui pour le moment — la courbe apparaîtra après les prochains passages."
+          : "Pas encore de relevé intrajournalier pour aujourd'hui."
+      ]);
+    }
+    var closes = pts.map(function (p) { return p.cours; }).filter(function (v) { return v != null; });
+    var w = 260, h = 56, pad = 6;
+    var min = Math.min.apply(null, closes), max = Math.max.apply(null, closes);
+    var range = max - min || 1;
+    var step = (w - pad * 2) / (closes.length - 1);
+    var d = closes.map(function (v, i) {
+      var x = pad + i * step;
+      var y = h - pad - ((v - min) / range) * (h - pad * 2);
+      return (i === 0 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+    var up = closes[closes.length - 1] >= closes[0];
+    var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="' + h + '" class="spark-intraday" preserveAspectRatio="none" aria-hidden="true">' +
+      '<path d="' + d + '" fill="none" stroke="' + (up ? "var(--up)" : "var(--down)") + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg>';
+    var first = pts[0], last = pts[pts.length - 1];
+    var firstTime = first.ts ? new Date(first.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+    var lastTime = last.ts ? new Date(last.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+    return el("div", { class: "intraday-chart" }, [
+      el("div", { html: svg }),
+      el("div", { class: "intraday-legend muted small" }, [
+        firstTime + " · " + fmtFCFA(closes[0]) + "  →  " + lastTime + " · " + fmtFCFA(closes[closes.length - 1]) +
+        "  (" + pts.length + " relevé(s))"
+      ])
+    ]);
+  }
+
   function renderHeader() {
     var m = state.market;
     var header = el("header", { class: "app-header" }, [
@@ -165,9 +211,13 @@
     wrap.appendChild(btn);
     if (state.ui.methodOpen) {
       wrap.appendChild(el("div", { class: "method-body" }, [
-        el("p", {}, ["Chaque valeur est notée à partir de trois ingrédients calculés sur l'historique réellement observé depuis la mise en service de l'outil : le momentum (variation récente du cours), la volatilité (écart-type des variations journalières) et la confirmation par le volume (volume du jour comparé à la moyenne récente)."]),
-        el("p", {}, ["Ces trois signaux sont pondérés différemment selon le profil : un profil ", el("b", {}, ["prudent"]), " amortit fortement la conviction d'achat tant que l'historique est court et ne recommande jamais d'acheter sur la foi d'une seule séance ; un profil ", el("b", {}, ["dynamique"]), " réagit plus vite au momentum et au volume, quitte à accepter plus de volatilité."]),
-        el("p", {}, ["Les données proviennent des pages officielles et publiques de brvm.org (cours du jour et indices), récupérées après la clôture de chaque séance. L'historique se reconstitue jour après jour — plus l'outil est utilisé longtemps, plus les moyennes mobiles et la volatilité deviennent fiables."]),
+        el("p", {}, ["Chaque valeur est notée à partir de plusieurs ingrédients calculés sur l'historique réellement observé depuis la mise en service de l'outil : le momentum (variation récente du cours), la volatilité (écart-type des variations journalières), la confirmation par le volume (volume du jour comparé à la moyenne récente), la ", el("b", {}, ["confirmation multi-horizon"]), " (le court terme — 5 séances —, le moyen terme — 30 séances — et le long terme — 90 séances — pointent-ils dans le même sens ?) et la ", el("b", {}, ["force relative"]), " par rapport à l'indice BRVM Composite (l'action fait-elle mieux ou moins bien que le marché dans son ensemble sur la même période ?)."]),
+        el("p", {}, ["Une tendance de fond baissière confirmée sur plusieurs horizons neutralise toute conviction d'achat court terme, quel que soit le profil : l'outil ne recommande jamais de renforcer une valeur dont le moyen et le long terme restent clairement orientés à la baisse, même si le cours rebondit sur quelques séances."]),
+        el("p", {}, ["Un filtre de liquidité s'applique en dernier lieu : si le volume échangé est nul, ou anormalement faible au regard d'un mouvement de prix marqué, le signal est forcé à ", el("b", {}, ["Surveiller"]), " — sur un marché aussi peu liquide que la BRVM pour une partie de ses valeurs, un mouvement de cours non confirmé par un vrai volume d'échange n'est pas un signal fiable."]),
+        el("p", {}, ["Ces signaux sont pondérés différemment selon le profil : un profil ", el("b", {}, ["prudent"]), " amortit fortement la conviction d'achat tant que l'historique est court et ne recommande jamais d'acheter sur la foi d'une seule séance ; un profil ", el("b", {}, ["dynamique"]), " réagit plus vite au momentum et au volume, quitte à accepter plus de volatilité."]),
+        el("p", {}, ["La vue « Concentration du portefeuille » (colonne de droite) complète l'analyse valeur par valeur : elle signale un risque de concentration sectorielle ou géographique excessive, indépendamment du signal de chaque ligne."]),
+        el("p", {}, ["Les données proviennent des pages officielles et publiques de brvm.org (cours du jour et indices). L'historique se reconstitue séance après séance — plus l'outil est utilisé longtemps, plus les moyennes mobiles, la volatilité et la confirmation multi-horizon deviennent fiables. Un tracé intrajournalier (fenêtre des dernières séances) est aussi conservé pour visualiser le mouvement du jour, sans influencer le calcul des recommandations."]),
+        el("p", {}, ["Ceci reste une analyse ", el("b", {}, ["technique"]), " (prix, volume, tendance), pas une analyse fondamentale : les résultats de l'entreprise, les dividendes ou le contexte macroéconomique de l'UEMOA ne sont pas pris en compte."]),
         el("p", { class: "disclaimer" }, ["Ceci est un outil d'aide à la décision basé sur des règles quantitatives transparentes. Ce n'est pas un conseil en investissement réglementé et cela ne remplace pas l'avis d'un conseiller agréé auprès du CREPMF. Les marchés actions comportent un risque de perte en capital."])
       ]));
     }
@@ -241,6 +291,70 @@
       box.appendChild(el("p", { class: "muted small" }, ["Aucune position enregistrée. Ajoutez vos actions détenues pour suivre votre plus/moins-value et recevoir des signaux personnalisés."]));
     }
     box.appendChild(renderAddPositionForm());
+    return box;
+  }
+
+  // Vue de risque de concentration : indépendante des signaux par valeur,
+  // elle regarde le portefeuille dans son ensemble — un portefeuille très
+  // concentré sur un secteur ou un pays est un risque en soi, même si
+  // chaque ligne prise isolément a un bon signal.
+  var CONCENTRATION_WARN_PCT = 50;
+
+  function concentrationBreakdown() {
+    var portfolio = state.user.portfolio || [];
+    var totalVal = 0;
+    var bySecteur = {}, byPays = {};
+    portfolio.forEach(function (pos) {
+      var s = findStock(pos.symbole);
+      var val = (s && s.cours_cloture != null) ? s.cours_cloture * pos.quantite : pos.prix_achat * pos.quantite;
+      totalVal += val;
+      var sect = s ? s.secteur : "Non classé";
+      var pays = s ? s.pays : "Non spécifié";
+      bySecteur[sect] = (bySecteur[sect] || 0) + val;
+      byPays[pays] = (byPays[pays] || 0) + val;
+    });
+    function toSorted(obj) {
+      return Object.keys(obj).map(function (k) {
+        return { label: k, val: obj[k], pct: totalVal ? (obj[k] / totalVal) * 100 : 0 };
+      }).sort(function (a, b) { return b.val - a.val; });
+    }
+    return { totalVal: totalVal, secteurs: toSorted(bySecteur), pays: toSorted(byPays) };
+  }
+
+  function concentrationBars(title, entries) {
+    var wrap = el("div", { class: "concentration-group" }, [el("div", { class: "muted small concentration-title" }, [title])]);
+    entries.slice(0, 6).forEach(function (e) {
+      wrap.appendChild(el("div", { class: "concentration-row" }, [
+        el("span", { class: "concentration-label" }, [e.label]),
+        el("div", { class: "concentration-bar-track" }, [
+          el("div", { class: "concentration-bar-fill" + (e.pct >= CONCENTRATION_WARN_PCT ? " over" : ""), style: "width:" + Math.min(e.pct, 100).toFixed(0) + "%" })
+        ]),
+        el("span", { class: "concentration-pct num" }, [fmtNum(e.pct, 0) + " %"])
+      ]));
+    });
+    return wrap;
+  }
+
+  function renderConcentration() {
+    var portfolio = state.user.portfolio || [];
+    if (!portfolio.length) return null;
+    var b = concentrationBreakdown();
+    var box = el("section", { class: "panel" }, [el("h2", {}, ["Concentration du portefeuille"])]);
+    var topSecteur = b.secteurs[0], topPays = b.pays[0];
+    var overSecteur = topSecteur && topSecteur.pct >= CONCENTRATION_WARN_PCT;
+    var overPays = topPays && topPays.pct >= CONCENTRATION_WARN_PCT;
+    if (overSecteur || overPays) {
+      var bits = [];
+      if (overSecteur) bits.push(topSecteur.label + " (" + fmtNum(topSecteur.pct, 0) + " % du portefeuille)");
+      if (overPays) bits.push(topPays.label + " (" + fmtNum(topPays.pct, 0) + " % du portefeuille)");
+      box.appendChild(el("p", { class: "muted small concentration-warning" }, [
+        "⚠ Portefeuille concentré sur " + bits.join(" et ") + ". Une forte concentration sectorielle ou géographique est un risque en soi, indépendant du signal de chaque valeur prise isolément."
+      ]));
+    } else {
+      box.appendChild(el("p", { class: "muted small" }, ["Répartition actuelle, à titre indicatif — aucun seuil de concentration (" + CONCENTRATION_WARN_PCT + " %) n'est dépassé."]));
+    }
+    box.appendChild(concentrationBars("Par secteur", b.secteurs));
+    box.appendChild(concentrationBars("Par pays", b.pays));
     return box;
   }
 
@@ -392,19 +506,35 @@
       el("td", { class: "num" }, [fmtNum(s.cours_cloture, 0)]),
       el("td", { class: "num " + pctClass(s.variation_pct) }, [fmtPct(s.variation_pct)]),
       el("td", { class: "col-tendance" }, [sparkline(state.market.history[s.symbole])]),
-      el("td", {}, [signalBadge(reco.signal)]),
+      el("td", {}, [
+        signalBadge(reco.signal),
+        s.indicateurs.liquidite_insuffisante ? el("span", { class: "badge tone-warning liquidity-flag", title: "Volume insuffisant pour faire confiance au signal" }, ["⚠ liquidité"]) : null
+      ]),
       el("td", { class: "expand-caret" }, [expanded ? "−" : "+"])
     ])];
     if (expanded) {
       var ind = s.indicateurs;
+      var align = ALIGNEMENT_META[ind.tendance_alignement] || ALIGNEMENT_META.indeterminee;
       rows.push(el("tr", { class: "row-detail" }, [el("td", { colspan: "7" }, [
         el("div", { class: "detail-grid" }, [
           el("div", {}, [el("b", {}, [s.nom]), el("div", { class: "muted small" }, [s.pays])]),
           el("div", {}, [el("div", { class: "muted small" }, ["Ouverture / Clôture"]), el("div", {}, [fmtFCFA(s.cours_ouverture) + " → " + fmtFCFA(s.cours_cloture)])]),
           el("div", {}, [el("div", { class: "muted small" }, ["Volume"]), el("div", {}, [fmtNum(s.volume, 0)])]),
-          el("div", {}, [el("div", { class: "muted small" }, ["Momentum"]), el("div", {}, [ind.momentum_pct != null ? fmtPct(ind.momentum_pct) + " (" + ind.momentum_fenetre + "j)" : "—"])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Momentum court (5j)"]), el("div", {}, [ind.momentum_pct != null ? fmtPct(ind.momentum_pct) + " (" + ind.momentum_fenetre + "j)" : "—"])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Momentum moyen (30j)"]), el("div", {}, [ind.momentum_moyen_pct != null ? fmtPct(ind.momentum_moyen_pct) + " (" + ind.momentum_moyen_fenetre + "j)" : "—"])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Momentum long (90j)"]), el("div", {}, [ind.momentum_long_pct != null ? fmtPct(ind.momentum_long_pct) + " (" + ind.momentum_long_fenetre + "j)" : "—"])]),
           el("div", {}, [el("div", { class: "muted small" }, ["Volatilité"]), el("div", {}, [ind.volatilite_pct != null ? fmtNum(ind.volatilite_pct, 1) + " %" : "—"])]),
-          el("div", {}, [el("div", { class: "muted small" }, ["Volume vs moyenne"]), el("div", {}, [ind.volume_ratio != null ? fmtNum(ind.volume_ratio, 2) + "x" : "—"])])
+          el("div", {}, [el("div", { class: "muted small" }, ["Volume vs moyenne"]), el("div", {}, [ind.volume_ratio != null ? fmtNum(ind.volume_ratio, 2) + "x" : "—"])]),
+          el("div", {}, [el("div", { class: "muted small" }, ["Force relative vs BRVM Composite"]), el("div", {}, [ind.force_relative_pct != null ? fmtPct(ind.force_relative_pct) : "n/d"])])
+        ]),
+        el("div", { class: "alignment-row" }, [
+          el("span", { class: "badge tone-" + align.tone }, [align.label]),
+          el("span", { class: "muted small" }, [" " + align.detail])
+        ]),
+        ind.liquidite_insuffisante ? el("p", { class: "muted small liquidity-note" }, ["⚠ Volume d'échange trop faible aujourd'hui pour faire confiance au signal technique : il est forcé à Surveiller, quel que soit le profil."]) : null,
+        el("div", { class: "intraday-block" }, [
+          el("div", { class: "muted small", style: "margin:10px 0 4px" }, ["Évolution intrajournalière (aujourd'hui)"]),
+          intradaySparkline((state.market.intraday || {})[s.symbole], state.market.asOfDate)
         ]),
         el("div", { class: "reco-all" }, PROFILES.map(function (p) {
           var r = s.recommandations[p.key];
@@ -421,7 +551,7 @@
     root.appendChild(renderHeader());
     var main = el("main", { class: "layout" });
     var left = el("div", { class: "col-main" }, [renderSynthese(), renderMethodology(), renderMarketTable()]);
-    var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderPortfolio(), renderWatchlist()]);
+    var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderPortfolio(), renderConcentration(), renderWatchlist()]);
     main.appendChild(left);
     main.appendChild(right);
     root.appendChild(main);

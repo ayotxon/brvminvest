@@ -2,26 +2,35 @@
 """
 Moteur d'analyse BRVM — calcule indicateurs de tendance et recommandations
 par profil de risque (prudent / equilibre / dynamique) à partir :
-  - de l'historique déjà accumulé (par symbole)
+  - de l'historique déjà accumulé (par symbole, et pour les indices)
   - du relevé du jour (cours_veille, cours_ouverture, cours_cloture, volume, variation_pct)
 
-Ce script est conçu pour être ré-exécutable chaque jour, y compris par une
-session fraîche qui n'a comme contexte que le HTML de l'artefact publié la
-veille (d'où l'absence de dépendances externes non-standard : uniquement la
+Ce script est conçu pour être ré-exécutable chaque jour (et même plusieurs
+fois par jour, en cadence intrajournalière), y compris par une session
+fraîche qui n'a comme contexte que le HTML de l'artefact publié la veille
+(d'où l'absence de dépendances externes non-standard : uniquement la
 bibliothèque standard Python).
 
 Usage :
     python3 analysis_engine.py --history history.json --today today_stocks.json \
         --indices today_indices.json --sectors sectors.json --out market_data.json \
-        --date 2026-08-25 --label "Mardi 25 août 2026" --updated "2026-08-25T13:04:00+00:00"
+        --date 2026-08-25 --label "Mardi 25 août 2026" --updated "2026-08-25T13:04:00+00:00" \
+        --intraday intraday.json
 
 Formats d'entrée attendus (voir README embarqué dans le dashboard) :
-  history.json : { "SYMB": [ {"date": "2026-08-24", "cloture": 1234.0, "volume": 5678}, ... ], ... }
-                 (peut être {} au tout premier lancement)
+  history.json : { "SYMB": [ {"date": "2026-08-24", "cloture": 1234.0, "volume": 5678}, ... ], ...,
+                    "_IDX_<nom indice>": [ {"date": ..., "cloture": ..., "volume": null}, ... ] }
+                 (peut être {} au tout premier lancement ; les entrées "_IDX_..."
+                  portent l'historique des indices, dans le même fichier et le
+                  même format que les actions pour rester purgeables/simples)
   today_stocks.json : liste d'objets bruts scrapés depuis brvm.org/fr/cours-actions/0
                  [{"symbole","nom","volume","cours_veille","cours_ouverture","cours_cloture","variation_pct"}, ...]
                  (nombres en chaînes avec formatage FR, ex "1 234", "7,46" -> gérés ici)
   today_indices.json : liste d'objets [{"nom_indice","cloture","variation_pct",...}, ...]
+  intraday.json (optionnel) : { "SYMB": [ {"ts","date","cours","variation_pct"}, ... ], ... }
+                 fenêtre glissante (par défaut les 5 dernières séances), alimentée
+                 à CHAQUE passage (pas dédupliquée par date, contrairement à history.json)
+                 pour permettre un tracé "aujourd'hui" / "derniers jours" par valeur.
 """
 import json
 import argparse
@@ -47,9 +56,25 @@ def to_number(x):
         return None
 
 
+def norm_name(s):
+    return (s or "").strip().lower()
+
+
 # ---------------------------------------------------------------------------
 # Indicateurs techniques
 # ---------------------------------------------------------------------------
+# Fenêtres de momentum utilisées pour la confirmation multi-horizon : un
+# signal appuyé uniquement sur le court terme (5 séances) est bien moins
+# solide qu'un signal où court, moyen et long terme sont alignés.
+MOMENTUM_WINDOWS = {"court": 5, "moyen": 30, "long": 90}
+MA_WINDOWS = [5, 20, 30, 60, 90]
+
+# Nombre minimal de points requis sur chaque horizon pour que celui-ci
+# compte dans le calcul d'alignement de tendance (on ne réclame pas un
+# horizon "confirmé" sur la foi de 2-3 points épars).
+MOMENTUM_MIN_POINTS = {"court": 3, "moyen": 15, "long": 45}
+
+
 def compute_indicators(history_points):
     """history_points: liste triée par date croissante de {date, cloture, volume}
     (le point du jour est déjà inclus en dernière position par l'appelant)."""
@@ -64,17 +89,24 @@ def compute_indicators(history_points):
             return None, 0
         return statistics.mean(vals[-w:]), w
 
-    ma5, ma5_n = windowed_mean(closes, 5)
-    ma20, ma20_n = windowed_mean(closes, 20)
+    mas = {}
+    for w in MA_WINDOWS:
+        val, used = windowed_mean(closes, w)
+        mas[w] = round(val, 2) if val is not None else None
 
-    momentum_pct = None
-    momentum_window = 0
-    if n >= 2:
-        w = min(n - 1, 5)
-        base = closes[-1 - w]
-        if base:
-            momentum_pct = (closes[-1] - base) / base * 100.0
-            momentum_window = w
+    def momentum_over(w):
+        if n < 2:
+            return None, 0
+        win = min(n - 1, w)
+        base = closes[-1 - win]
+        if not base:
+            return None, win
+        return (closes[-1] - base) / base * 100.0, win
+
+    momentum = {}
+    for key, w in MOMENTUM_WINDOWS.items():
+        pct, used = momentum_over(w)
+        momentum[key] = {"pct": round(pct, 2) if pct is not None else None, "fenetre": used}
 
     volatilite_pct = None
     if n >= 3:
@@ -89,7 +121,7 @@ def compute_indicators(history_points):
     volumes = [p["volume"] for p in history_points if p.get("volume") is not None]
     volume_ratio = None
     if len(volumes) >= 2:
-        prior = volumes[:-1][-10:]  # jusqu'à 10 derniers jours hors aujourd'hui
+        prior = volumes[:-1][-10:]  # jusqu'à 10 derniers relevés hors aujourd'hui
         prior = [v for v in prior if v is not None and v > 0]
         if prior:
             avg_prior = statistics.mean(prior)
@@ -105,17 +137,42 @@ def compute_indicators(history_points):
     else:
         confiance = "elevee"
 
+    # Alignement de tendance multi-horizon : on ne retient un horizon que
+    # s'il dispose d'assez de points, puis on regarde si tous les horizons
+    # disponibles pointent dans le même sens.
+    aligned_vals = []
+    for key, w in MOMENTUM_WINDOWS.items():
+        m = momentum[key]
+        if m["pct"] is not None and m["fenetre"] >= MOMENTUM_MIN_POINTS[key]:
+            aligned_vals.append(m["pct"])
+    if len(aligned_vals) < 2:
+        tendance_alignement = "indeterminee"
+    elif all(v > 0.3 for v in aligned_vals):
+        tendance_alignement = "haussiere_confirmee"
+    elif all(v < -0.3 for v in aligned_vals):
+        tendance_alignement = "baissiere_confirmee"
+    else:
+        tendance_alignement = "mixte"
+
     return {
-        "ma5": round(ma5, 2) if ma5 is not None else None,
-        "ma5_fenetre": ma5_n,
-        "ma20": round(ma20, 2) if ma20 is not None else None,
-        "ma20_fenetre": ma20_n,
-        "momentum_pct": round(momentum_pct, 2) if momentum_pct is not None else None,
-        "momentum_fenetre": momentum_window,
+        "ma5": mas[5],
+        "ma5_fenetre": min(5, n),
+        "ma20": mas[20],
+        "ma20_fenetre": min(20, n),
+        "ma30": mas[30],
+        "ma60": mas[60],
+        "ma90": mas[90],
+        "momentum_pct": momentum["court"]["pct"],
+        "momentum_fenetre": momentum["court"]["fenetre"],
+        "momentum_moyen_pct": momentum["moyen"]["pct"],
+        "momentum_moyen_fenetre": momentum["moyen"]["fenetre"],
+        "momentum_long_pct": momentum["long"]["pct"],
+        "momentum_long_fenetre": momentum["long"]["fenetre"],
         "volatilite_pct": round(volatilite_pct, 2) if volatilite_pct is not None else None,
         "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
         "n_points": n,
         "confiance": confiance,
+        "tendance_alignement": tendance_alignement,
     }
 
 
@@ -170,6 +227,26 @@ CONFIDENCE_FACTOR = {"aucune": 0.3, "faible": 0.5, "moyenne": 0.8, "elevee": 1.0
 
 BUY_SIGNAL_RANK = ["CONSERVER", "RENFORCER", "ACHETER"]
 
+# Seuils du filtre de liquidité : en dessous, on ne fait plus confiance au
+# signal technique, quel que soit le score, car le mouvement de prix observé
+# n'est pas confirmé par un volume d'échange crédible (marché BRVM peu
+# liquide sur une partie des ~47 valeurs).
+LIQUIDITY_WEAK_RATIO = 0.2
+LIQUIDITY_WEAK_MOVE_PCT = 3.0
+
+
+def liquidity_flag(volume, ind, variation_pct):
+    """Renvoie (illiquide: bool, motif: str|None)."""
+    if volume is None or volume <= 0:
+        return True, "aucun échange constaté sur cette valeur au dernier relevé (volume nul) — signal jugé non fiable"
+    vr = ind.get("volume_ratio")
+    if vr is not None and vr < LIQUIDITY_WEAK_RATIO and abs(variation_pct) >= LIQUIDITY_WEAK_MOVE_PCT:
+        return True, (
+            f"volume très faible ({vr:.2f}x la moyenne récente) pour un mouvement de {fmt_pct(variation_pct)} "
+            "— signal jugé non fiable sur une valeur aussi peu échangée"
+        )
+    return False, None
+
 
 def recommend_for_profile(profile_key, variation_pct, ind):
     p = PROFILE_PARAMS[profile_key]
@@ -206,6 +283,27 @@ def recommend_for_profile(profile_key, variation_pct, ind):
     if ind["confiance"] in ("aucune", "faible"):
         reasons.append("historique encore court : conviction d'achat volontairement limitée tant que l'historique s'étoffe")
 
+    # --- Confirmation multi-horizon (court/moyen/long terme) -------------
+    align = ind.get("tendance_alignement", "indeterminee")
+    if align == "haussiere_confirmee":
+        score += 0.5 * conf_factor
+        reasons.append("tendance haussière confirmée sur plusieurs horizons (court, moyen et long terme alignés)")
+    elif align == "baissiere_confirmee":
+        score -= 0.6
+        reasons.append("tendance baissière confirmée sur plusieurs horizons (court, moyen et long terme alignés)")
+    elif align == "mixte":
+        reasons.append("tendances divergentes selon l'horizon (le court terme ne confirme pas le moyen/long terme) : signal à interpréter avec prudence")
+
+    # --- Force relative vs indice BRVM Composite --------------------------
+    rp = ind.get("force_relative_pct")
+    if rp is not None:
+        if rp >= 2.0:
+            score += 0.3 * conf_factor
+            reasons.append(f"surperforme l'indice BRVM Composite (écart de {fmt_pct(rp)} sur la même période)")
+        elif rp <= -2.0:
+            score -= 0.3
+            reasons.append(f"sous-performe l'indice BRVM Composite (écart de {fmt_pct(rp)} sur la même période)")
+
     if score >= p["buy_threshold"]:
         signal = "ACHETER"
     elif score >= p["reinforce_threshold"]:
@@ -216,6 +314,14 @@ def recommend_for_profile(profile_key, variation_pct, ind):
         signal = "ALLÉGER"
     else:
         signal = "CONSERVER"
+
+    # Une tendance de fond baissière confirmée sur plusieurs horizons
+    # neutralise toute conviction d'achat court terme, quel que soit le
+    # profil : on ne recommande pas de renforcer/acheter une valeur dont le
+    # moyen et le long terme restent clairement orientés à la baisse.
+    if align == "baissiere_confirmee" and signal in ("ACHETER", "RENFORCER"):
+        signal = "CONSERVER"
+        reasons.append("conviction d'achat neutralisée : la tendance de fond (moyen/long terme) reste baissière malgré le signal court terme")
 
     # Pour un profil prudent avec peu d'historique, on plafonne la conviction
     # d'achat (jamais d'ACHETER franc sur une seule séance), sans plafonner
@@ -252,6 +358,30 @@ def trend_label(variation_pct, ind):
 
 
 # ---------------------------------------------------------------------------
+# Historique intraday (fenêtre glissante, non dédupliqué par date)
+# ---------------------------------------------------------------------------
+DEFAULT_INTRADAY_WINDOW_DATES = 5
+
+
+def update_intraday(intraday, stocks_out, date_iso, updated_iso, window_dates):
+    for s in stocks_out:
+        if s["cours_cloture"] is None:
+            continue
+        symb = s["symbole"]
+        pts = list(intraday.get(symb, []))
+        pts.append({
+            "ts": updated_iso,
+            "date": date_iso,
+            "cours": s["cours_cloture"],
+            "variation_pct": s["variation_pct"],
+        })
+        dates_present = sorted(set(p["date"] for p in pts))
+        keep_dates = set(dates_present[-window_dates:])
+        intraday[symb] = [p for p in pts if p["date"] in keep_dates]
+    return intraday
+
+
+# ---------------------------------------------------------------------------
 # Programme principal
 # ---------------------------------------------------------------------------
 def main():
@@ -264,6 +394,9 @@ def main():
     ap.add_argument("--date", required=True, help="YYYY-MM-DD de la séance traitée")
     ap.add_argument("--label", required=True, help="Libellé humain de la date, ex 'Mardi 25 août 2026'")
     ap.add_argument("--updated", required=True, help="Horodatage ISO de mise à jour")
+    ap.add_argument("--intraday", default=None, help="Fichier intraday.json existant (optionnel)")
+    ap.add_argument("--intraday-window-dates", type=int, default=DEFAULT_INTRADAY_WINDOW_DATES,
+                     help="Nombre de séances récentes conservées en résolution intrajournalière")
     args = ap.parse_args()
 
     with open(args.history, encoding="utf-8") as f:
@@ -274,6 +407,40 @@ def main():
         indices_raw = json.load(f)
     with open(args.sectors, encoding="utf-8") as f:
         sectors = json.load(f)
+
+    intraday = {}
+    if args.intraday:
+        try:
+            with open(args.intraday, encoding="utf-8") as f:
+                intraday = json.load(f)
+        except FileNotFoundError:
+            intraday = {}
+
+    # --- 1) Indices : mise à jour de leur propre historique AVANT la boucle
+    # sur les actions, pour pouvoir calculer la force relative de chaque
+    # action par rapport à l'indice BRVM Composite dans la même passe. ------
+    indices_out = []
+    composite_ind = None
+    for row in indices_raw:
+        nom = row.get("nom_indice", "").strip()
+        cloture = to_number(row.get("cloture"))
+        variation = to_number(row.get("variation_pct"))
+        if not nom or cloture is None:
+            continue
+        idx_key = "_IDX_" + nom
+        idx_points = list(history.get(idx_key, []))
+        idx_points = [p for p in idx_points if p.get("date") != args.date]
+        idx_points.append({"date": args.date, "cloture": cloture, "volume": None})
+        history[idx_key] = idx_points
+        idx_ind = compute_indicators(idx_points)
+        indices_out.append({
+            "nom": nom,
+            "cloture": cloture,
+            "variation_pct": variation,
+            "indicateurs": idx_ind,
+        })
+        if "composite" in norm_name(nom):
+            composite_ind = idx_ind
 
     stocks_out = []
     hausses, baisses, stables = 0, 0, 0
@@ -314,10 +481,32 @@ def main():
 
         ind = compute_indicators(hist_points)
 
+        # Force relative vs BRVM Composite (même fenêtre "court terme" que
+        # le momentum principal, 5 séances) : ce qui compte n'est pas
+        # "l'action monte", mais "l'action monte plus ou moins vite que le
+        # marché dans son ensemble".
+        ind["force_relative_pct"] = None
+        if (
+            composite_ind is not None
+            and ind["momentum_pct"] is not None and ind["momentum_fenetre"] >= 3
+            and composite_ind["momentum_pct"] is not None and composite_ind["momentum_fenetre"] >= 3
+        ):
+            ind["force_relative_pct"] = round(ind["momentum_pct"] - composite_ind["momentum_pct"], 2)
+
+        # Filtre de liquidité : override strict, appliqué après le calcul
+        # des recommandations ci-dessous.
+        illiquide, liquidite_note = liquidity_flag(volume, ind, variation)
+        ind["liquidite_insuffisante"] = illiquide
+
         recos = {
             profile: recommend_for_profile(profile, variation, ind)
             for profile in PROFILE_PARAMS
         }
+        if illiquide:
+            for profile, reco in recos.items():
+                if reco["signal"] != "SURVEILLER":
+                    reco["signal"] = "SURVEILLER"
+                    reco["raison"] += " Signal forcé à SURVEILLER : " + liquidite_note + "."
 
         sect = sectors.get(symb, {"secteur": "Non classé", "pays": "Non spécifié"})
 
@@ -349,19 +538,15 @@ def main():
         if biggest_loss is None or variation < biggest_loss["variation_pct"]:
             biggest_loss = {"symbole": symb, "nom": row.get("nom", symb), "variation_pct": round(variation, 2)}
 
-    # Purge de l'historique au-delà de 260 séances par valeur (~1 an) pour borner la taille
-    for symb in list(history.keys()):
-        if len(history[symb]) > 260:
-            history[symb] = history[symb][-260:]
+    # Purge de l'historique au-delà de 260 séances par entrée (~1 an) pour
+    # borner la taille — s'applique uniformément aux actions et aux indices
+    # (clés "_IDX_...") puisqu'ils partagent le même format de points.
+    for key in list(history.keys()):
+        if len(history[key]) > 260:
+            history[key] = history[key][-260:]
 
-    indices_out = []
-    for row in indices_raw:
-        nom = row.get("nom_indice", "").strip()
-        cloture = to_number(row.get("cloture"))
-        variation = to_number(row.get("variation_pct"))
-        if not nom or cloture is None:
-            continue
-        indices_out.append({"nom": nom, "cloture": cloture, "variation_pct": variation})
+    # Historique intraday : fenêtre glissante mise à jour à CHAQUE passage.
+    intraday = update_intraday(intraday, stocks_out, args.date, args.updated, args.intraday_window_dates)
 
     total_n_points = [s["indicateurs"]["n_points"] for s in stocks_out] or [0]
     data_maturity_days = max(total_n_points)
@@ -390,12 +575,17 @@ def main():
         },
         "stocks": sorted(stocks_out, key=lambda s: s["symbole"]),
         "history": history,
+        "intraday": intraday,
     }
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(market_data, f, ensure_ascii=False, indent=None, separators=(",", ":"))
 
-    print(f"OK: {len(stocks_out)} valeurs traitées, historique {sum(len(v) for v in history.values())} points cumulés.", file=sys.stderr)
+    print(
+        f"OK: {len(stocks_out)} valeurs traitées, historique {sum(len(v) for k, v in history.items() if not k.startswith('_IDX_'))} "
+        f"points cumulés (actions), intraday {sum(len(v) for v in intraday.values())} points (fenêtre {args.intraday_window_dates} séances).",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

@@ -207,6 +207,24 @@ a { color: var(--accent); }
 
 .spark-wrap { display: inline-block; line-height: 0; }
 
+.liquidity-flag { margin-left: 6px; }
+.liquidity-note { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 4px; }
+.alignment-row { padding: 0 4px 8px; }
+.intraday-block { padding: 4px 4px 2px; }
+.intraday-chart svg.spark-intraday { display: block; width: 100%; }
+.intraday-legend { margin-top: 4px; }
+
+.concentration-group { margin-bottom: 14px; }
+.concentration-group:last-child { margin-bottom: 0; }
+.concentration-title { margin-bottom: 6px; }
+.concentration-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.85rem; }
+.concentration-label { flex: 0 0 auto; min-width: 90px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.concentration-bar-track { flex: 1 1 auto; height: 8px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
+.concentration-bar-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+.concentration-bar-fill.over { background: var(--down); }
+.concentration-pct { flex: 0 0 auto; min-width: 3.2em; }
+.concentration-warning { border-top: 1px dashed var(--border); padding-top: 8px; margin-bottom: 12px; }
+
 .portfolio-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
 
 .add-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }

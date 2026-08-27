@@ -84,17 +84,24 @@ def main():
     if not history_path.exists():
         history_path.write_text("{}", encoding="utf-8")
 
+    intraday_path = HERE / "intraday.json"
+    if not intraday_path.exists():
+        intraday_path.write_text("{}", encoding="utf-8")
+
     new_market_path = HERE / "market_data.json"
     run([sys.executable, str(HERE / "analysis_engine.py"),
          "--history", str(history_path), "--today", str(stocks_path),
          "--indices", str(indices_path), "--sectors", str(HERE / "sectors.json"),
          "--out", str(new_market_path),
-         "--date", date_iso, "--label", label, "--updated", now_iso])
+         "--date", date_iso, "--label", label, "--updated", now_iso,
+         "--intraday", str(intraday_path), "--intraday-window-dates", "5"])
 
     with open(new_market_path, encoding="utf-8") as f:
         market_data = json.load(f)
     with open(history_path, "w", encoding="utf-8") as f:
         json.dump(market_data["history"], f, ensure_ascii=False)
+    with open(intraday_path, "w", encoding="utf-8") as f:
+        json.dump(market_data["intraday"], f, ensure_ascii=False)
 
     run([sys.executable, str(HERE / "build_standalone_html.py"),
          "--market", str(new_market_path), "--out", str(HERE / "index.html")])
