@@ -2,9 +2,13 @@ name: Mise à jour quotidienne BRVM Conseil
 
 on:
   schedule:
-    # 17h00 UTC, du lundi au vendredi (~2h après la clôture BRVM à 15h GMT)
+    - cron: "*/20 9-15 * * 1-5"
     - cron: "0 17 * * 1-5"
   workflow_dispatch: {}
+
+concurrency:
+  group: brvm-daily-update
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -31,10 +35,21 @@ jobs:
         run: |
           git config user.name "brvm-conseil-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add index.html history.json
+          git add index.html history.json intraday.json
           if git diff --cached --quiet; then
             echo "Rien de nouveau à publier (marché fermé ou déjà à jour)."
-          else
-            git commit -m "Mise à jour quotidienne BRVM $(date -u +%Y-%m-%d)"
-            git push
+            exit 0
           fi
+          git commit -m "Mise à jour quotidienne BRVM $(date -u +%Y-%m-%d)"
+          for i in 1 2 3; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              echo "Publié."
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            echo "Tentative $i échouée, nouvel essai dans 5s..."
+            sleep 5
+          done
+          echo "Échec de la publication après plusieurs tentatives." >&2
+          exit 1
