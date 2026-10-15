@@ -1,0 +1,372 @@
+[
+ {
+  "date": "2026-10-15",
+  "label": "Jeudi 15 octobre 2026",
+  "lastUpdate": "2026-10-15T21:54:11Z",
+  "hausses": 14,
+  "baisses": 27,
+  "stables": 7,
+  "composite": 0.19,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-14",
+  "label": "Mercredi 14 octobre 2026",
+  "lastUpdate": "2026-10-14T20:32:40Z",
+  "hausses": 12,
+  "baisses": 29,
+  "stables": 7,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-13",
+  "label": "Mardi 13 octobre 2026",
+  "lastUpdate": "2026-10-13T21:46:47Z",
+  "hausses": 12,
+  "baisses": 23,
+  "stables": 13,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-12",
+  "label": "Lundi 12 octobre 2026",
+  "lastUpdate": "2026-10-12T23:33:48Z",
+  "hausses": 13,
+  "baisses": 21,
+  "stables": 14,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-09",
+  "label": "Vendredi 9 octobre 2026",
+  "lastUpdate": "2026-10-09T21:33:14Z",
+  "hausses": 12,
+  "baisses": 25,
+  "stables": 11,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-08",
+  "label": "Jeudi 8 octobre 2026",
+  "lastUpdate": "2026-10-08T21:57:32Z",
+  "hausses": 15,
+  "baisses": 22,
+  "stables": 11,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-07",
+  "label": "Mercredi 7 octobre 2026",
+  "lastUpdate": "2026-10-07T21:53:33Z",
+  "hausses": 23,
+  "baisses": 14,
+  "stables": 11,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-06",
+  "label": "Mardi 6 octobre 2026",
+  "lastUpdate": "2026-10-06T21:32:56Z",
+  "hausses": 16,
+  "baisses": 19,
+  "stables": 13,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-05",
+  "label": "Lundi 5 octobre 2026",
+  "lastUpdate": "2026-10-05T23:06:02Z",
+  "hausses": 13,
+  "baisses": 26,
+  "stables": 9,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-02",
+  "label": "Vendredi 2 octobre 2026",
+  "lastUpdate": "2026-10-02T21:14:37Z",
+  "hausses": 22,
+  "baisses": 19,
+  "stables": 7,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-10-01",
+  "label": "Jeudi 1 octobre 2026",
+  "lastUpdate": "2026-10-01T21:43:24Z",
+  "hausses": 13,
+  "baisses": 26,
+  "stables": 9,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-09-30",
+  "label": "Mercredi 30 septembre 2026",
+  "lastUpdate": "2026-09-30T21:21:34Z",
+  "hausses": 16,
+  "baisses": 21,
+  "stables": 11,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-09-29",
+  "label": "Mardi 29 septembre 2026",
+  "lastUpdate": "2026-09-29T21:19:43Z",
+  "hausses": 22,
+  "baisses": 15,
+  "stables": 11,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-09-28",
+  "label": "Lundi 28 septembre 2026",
+  "lastUpdate": "2026-09-28T22:29:08Z",
+  "hausses": 22,
+  "baisses": 17,
+  "stables": 9,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-09-25",
+  "label": "Vendredi 25 septembre 2026",
+  "lastUpdate": "2026-09-25T20:21:11Z",
+  "hausses": 34,
+  "baisses": 7,
+  "stables": 7,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-09-24",
+  "label": "Jeudi 24 septembre 2026",
+  "lastUpdate": "2026-09-24T20:20:30Z",
+  "hausses": 28,
+  "baisses": 10,
+  "stables": 10,
+  "composite": null,
+  "nStocks": 48
+ },
+ {
+  "date": "2026-09-23",
+  "label": "Mercredi 23 septembre 2026",
+  "lastUpdate": "2026-09-23T20:07:40Z",
+  "hausses": 2,
+  "baisses": 41,
+  "stables": 4,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-22",
+  "label": "Mardi 22 septembre 2026",
+  "lastUpdate": "2026-09-22T20:05:01Z",
+  "hausses": 5,
+  "baisses": 34,
+  "stables": 8,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-21",
+  "label": "Lundi 21 septembre 2026",
+  "lastUpdate": "2026-09-21T20:55:59Z",
+  "hausses": 6,
+  "baisses": 29,
+  "stables": 12,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-18",
+  "label": "Vendredi 18 septembre 2026",
+  "lastUpdate": "2026-09-18T19:29:40Z",
+  "hausses": 8,
+  "baisses": 29,
+  "stables": 10,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-17",
+  "label": "Jeudi 17 septembre 2026",
+  "lastUpdate": "2026-09-17T20:08:28Z",
+  "hausses": 12,
+  "baisses": 29,
+  "stables": 6,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-16",
+  "label": "Mercredi 16 septembre 2026",
+  "lastUpdate": "2026-09-16T19:59:00Z",
+  "hausses": 12,
+  "baisses": 27,
+  "stables": 8,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-15",
+  "label": "Mardi 15 septembre 2026",
+  "lastUpdate": "2026-09-15T20:06:22Z",
+  "hausses": 13,
+  "baisses": 26,
+  "stables": 8,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-14",
+  "label": "Lundi 14 septembre 2026",
+  "lastUpdate": "2026-09-14T20:51:38Z",
+  "hausses": 16,
+  "baisses": 20,
+  "stables": 11,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-11",
+  "label": "Vendredi 11 septembre 2026",
+  "lastUpdate": "2026-09-11T19:31:10Z",
+  "hausses": 22,
+  "baisses": 15,
+  "stables": 10,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-10",
+  "label": "Jeudi 10 septembre 2026",
+  "lastUpdate": "2026-09-10T19:30:58Z",
+  "hausses": 23,
+  "baisses": 15,
+  "stables": 9,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-09",
+  "label": "Mercredi 9 septembre 2026",
+  "lastUpdate": "2026-09-09T19:40:27Z",
+  "hausses": 20,
+  "baisses": 20,
+  "stables": 7,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-08",
+  "label": "Mardi 8 septembre 2026",
+  "lastUpdate": "2026-09-08T19:48:33Z",
+  "hausses": 15,
+  "baisses": 22,
+  "stables": 10,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-07",
+  "label": "Lundi 7 septembre 2026",
+  "lastUpdate": "2026-09-07T20:26:41Z",
+  "hausses": 18,
+  "baisses": 26,
+  "stables": 3,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-04",
+  "label": "Vendredi 4 septembre 2026",
+  "lastUpdate": "2026-09-04T19:22:41Z",
+  "hausses": 17,
+  "baisses": 21,
+  "stables": 9,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-03",
+  "label": "Jeudi 3 septembre 2026",
+  "lastUpdate": "2026-09-03T19:42:18Z",
+  "hausses": 24,
+  "baisses": 13,
+  "stables": 10,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-02",
+  "label": "Mercredi 2 septembre 2026",
+  "lastUpdate": "2026-09-02T19:40:38Z",
+  "hausses": 18,
+  "baisses": 21,
+  "stables": 8,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-09-01",
+  "label": "Mardi 1 septembre 2026",
+  "lastUpdate": "2026-09-01T19:49:35Z",
+  "hausses": 30,
+  "baisses": 11,
+  "stables": 6,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-08-31",
+  "label": "Lundi 31 aout 2026",
+  "lastUpdate": "2026-08-31T21:51:04Z",
+  "hausses": 20,
+  "baisses": 18,
+  "stables": 9,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-08-28",
+  "label": "Vendredi 28 aout 2026",
+  "lastUpdate": "2026-08-28T20:30:37Z",
+  "hausses": 17,
+  "baisses": 22,
+  "stables": 8,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-08-27",
+  "label": "Jeudi 27 aout 2026",
+  "lastUpdate": "2026-08-27T20:43:12Z",
+  "hausses": 21,
+  "baisses": 20,
+  "stables": 6,
+  "composite": null,
+  "nStocks": 47
+ },
+ {
+  "date": "2026-08-25",
+  "label": "Mardi 25 août 2026",
+  "lastUpdate": "2026-08-25T13:04:00+00:00",
+  "hausses": 22,
+  "baisses": 16,
+  "stables": 9,
+  "composite": 0.17,
+  "nStocks": 47
+ }
+]

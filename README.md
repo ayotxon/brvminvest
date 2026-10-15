@@ -88,7 +88,9 @@ pip install -r requirements.txt
 python3 update_daily.py
 ```
 
-Cela récupère les cours du moment et régénère `index.html`. Pour automatiser
+Cela récupère les cours du moment, archive la séance et régénère
+`index.html` (`--force` pour retraiter la séance même si les cours n'ont pas
+bougé depuis le dernier relevé). Pour automatiser
 sans GitHub Actions (ex. lancer depuis ton propre ordinateur ou un petit
 serveur/VPS) :
 
@@ -98,6 +100,53 @@ serveur/VPS) :
 - **Windows** : Planificateur de tâches → tâche répétée toutes les 20 min en
   semaine, action = lancer `python.exe update_daily.py` avec comme "dossier
   de démarrage" le dossier du projet.
+
+## Archives des séances
+
+Chaque séance traitée est conservée dans `archives/AAAA-MM-JJ.json` :
+indices (principaux et sectoriels), synthèse, cours, indicateurs,
+recommandations des trois profils, relevés intrajournaliers du jour et
+relevés bruts scrapés sur brvm.org. L'archive du jour est réécrite à chaque
+passage ; le dernier passage de la journée fige l'état de clôture.
+`archives/index.json` liste les séances (la plus récente en premier).
+
+Dans le dashboard, le panneau **Archives des séances** (colonne de droite)
+permet de rouvrir n'importe quelle séance passée — tout le tableau de bord
+(signaux, portefeuille valorisé à cette date, analyse IA) bascule alors sur
+cette date — et de télécharger la séance affichée en CSV (format Excel
+français) ou JSON.
+
+Les archives sont chargées à la demande : il faut que la page soit servie
+en http(s) (GitHub Pages, Netlify, ou `python3 -m http.server` en local
+puis http://localhost:8000). En ouvrant `index.html` directement depuis le
+disque, la liste s'affiche mais le navigateur bloque leur chargement.
+
+Les séances antérieures à la mise en place de l'archivage ont été
+reconstituées depuis l'historique git avec `python3 backfill_archives.py`
+(à ne relancer qu'en cas de besoin, `--force` pour tout réécrire).
+
+## Analyse IA de la séance
+
+Le bouton **Analyser la séance avec l'IA** envoie les données de la séance
+affichée (indices, toutes les valeurs avec leurs indicateurs et signaux, les
+changements de signal depuis la séance précédente, et — si la case est
+cochée — ton portefeuille et ta liste de suivi) à l'API Claude d'Anthropic,
+qui rédige une lecture commentée : l'essentiel, la lecture du marché, les
+valeurs à la loupe, les signaux à relativiser, l'impact sur ton portefeuille
+et ce qu'il faut surveiller ensuite.
+
+- Il faut une clé API Anthropic (https://console.anthropic.com, facturation
+  à l'usage : de moins d'un centime à ~0,10 $ par analyse selon le modèle).
+  Elle se saisit via « Configurer », reste dans le `localStorage` de ton
+  navigateur et n'est envoyée qu'à `api.anthropic.com` (appel direct depuis
+  le navigateur, sans serveur intermédiaire).
+- Modèles proposés : Claude Opus 5.5 (par défaut, analyse la plus fine),
+  Sonnet 5.5, Haiku 5.5 (le plus économique).
+- Chaque analyse est mémorisée dans le navigateur par séance et par profil,
+  et téléchargeable en Markdown.
+- L'IA ne voit que les données du dashboard (pas d'actualité, ni de
+  résultats d'entreprises) : c'est un commentaire de plus, pas un conseil en
+  investissement.
 
 ## Fichiers du projet
 
@@ -116,6 +165,10 @@ serveur/VPS) :
   lance à chaque passage.
 - `build_standalone_html.py` — assemble `index.html` à partir des données de
   marché, du CSS et du JS.
+- `archives.py` — écriture des archives journalières et de leur index.
+- `backfill_archives.py` — reconstitution des archives passées depuis
+  l'historique git (usage ponctuel).
+- `archives/` — une archive JSON par séance + `index.json`.
 - `sectors.json` — table secteur/pays des ~47 valeurs BRVM.
 - `history.json` — historique quotidien cumulé des cours (un point par
   séance, par valeur) ; grossit à chaque nouvelle séance détectée.

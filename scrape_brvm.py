@@ -18,6 +18,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import unicodedata
 
 import requests
@@ -38,10 +39,21 @@ def norm(text):
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def fetch(url):
-    resp = requests.get(url, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
-    return BeautifulSoup(resp.text, "html.parser")
+def fetch(url, attempts=3):
+    """GET avec quelques nouvelles tentatives : brvm.org répond parfois
+    lentement ou en erreur 5xx ponctuelle, ce qui ne doit pas faire échouer
+    tout le passage de la tâche planifiée."""
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=30)
+            resp.raise_for_status()
+            return BeautifulSoup(resp.text, "html.parser")
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if attempt == attempts or (status is not None and status < 500):
+                raise
+            print(f"Tentative {attempt} échouée sur {url} ({e}), nouvel essai dans {5 * attempt}s...", file=sys.stderr)
+            time.sleep(5 * attempt)
 
 
 def header_cells(table):
@@ -149,52 +161,84 @@ def scrape_stocks():
 
     # Date/heure de dernière mise à jour affichée sur la page (best-effort)
     page_text = soup.get_text(" ", strip=True)
-    m = re.search(r"Derni[eè]re mise [aà] jour\s*:?\s*([^|]{0,60})", page_text, re.IGNORECASE)
+    m = re.search(r"Derni[eè]re mise [aà] jour\s*:?\s*([^|]{0,40}?\d{4}(?:\s*-\s*\d{1,2}:\d{2})?)",
+                  page_text, re.IGNORECASE)
     page_date = m.group(1).strip() if m else None
 
     return rows_out, page_date
 
 
+def _index_columns(headers):
+    """Repère les colonnes d'un tableau d'indices brvm.org. Les libellés
+    actuels sont « Nom | Fermeture précédente | Fermeture | Variation (%) |
+    Variation 31 décembre (%) » : il faut distinguer « fermeture » de
+    « fermeture précédente », et la variation du jour de la variation depuis
+    le début d'année."""
+    cols = {}
+    for i, h in enumerate(headers):
+        if "nom" in h and "nom" not in cols:
+            cols["nom"] = i
+        elif ("fermeture" in h or "cloture" in h or "cl ture" in h) and "precedente" in h:
+            cols["precedente"] = i
+        elif ("fermeture" in h or "cloture" in h or "cl ture" in h) and "cloture" not in cols:
+            cols["cloture"] = i
+        elif "variation" in h and ("decembre" in h or "annuel" in h or "debut" in h):
+            cols["variation_ytd_pct"] = i
+        elif "variation" in h and "variation_pct" not in cols:
+            cols["variation_pct"] = i
+        elif "ouverture" in h:
+            cols["ouverture"] = i
+        elif "haut" in h:
+            cols["plus_haut"] = i
+        elif "bas" in h:
+            cols["plus_bas"] = i
+    return cols
+
+
 def scrape_indices():
+    """La page des indices contient plusieurs tableaux d'indices (principaux,
+    sectoriels, rendement global) mêlés à d'autres tableaux (top/flop 5,
+    activité du marché) : on garde tous ceux qui ont à la fois une colonne
+    « nom » et une colonne de clôture."""
     soup = fetch(INDICES_URL)
-    table, headers = find_table(soup, ["cloture"])
-    if table is None:
-        table, headers = find_table(soup, ["variation"])
-    if table is None:
-        raise RuntimeError(
-            "Impossible de trouver le tableau des indices sur " + INDICES_URL +
-            " — en-têtes des tableaux trouvés : " +
-            repr([header_cells(t) for t in soup.find_all("table")][:5])
-        )
-
-    col_map = map_columns(headers, {
-        "ouverture": ["ouverture"],
-        "plus_haut": ["haut"],
-        "plus_bas": ["bas"],
-        "cloture": ["cloture", "cl ture"],
-        "variation_pct": ["variation"],
-    })
-
     rows_out = []
-    for tr in data_rows(table):
-        cells = tr.find_all(["td", "th"])
-        if not cells:
+    seen = set()
+    for table in soup.find_all("table"):
+        headers = header_cells(table)
+        cols = _index_columns(headers)
+        if "nom" not in cols or "cloture" not in cols:
             continue
-        # Le nom de l'indice est généralement en première cellule (souvent un <th>)
-        nom = cell_text(cells, 0)
-        if not nom:
-            continue
-        rows_out.append({
-            "nom_indice": nom,
-            "ouverture": cell_text(cells, col_map.get("ouverture")),
-            "plus_haut": cell_text(cells, col_map.get("plus_haut")),
-            "plus_bas": cell_text(cells, col_map.get("plus_bas")),
-            "cloture": cell_text(cells, col_map.get("cloture")),
-            "variation_pct": cell_text(cells, col_map.get("variation_pct")),
-        })
+        for tr in data_rows(table):
+            cells = tr.find_all(["td", "th"])
+            nom = cell_text(cells, cols["nom"])
+            if not nom or nom in seen:
+                continue
+            seen.add(nom)
+            nom_norm = norm(nom)
+            if "total return" in nom_norm:
+                categorie = "rendement"
+            elif any(k in nom_norm for k in ("composite", "brvm-30", "brvm 30", "prestige", "principal")):
+                categorie = "principal"
+            else:
+                categorie = "sectoriel"
+            rows_out.append({
+                "nom_indice": nom,
+                "categorie": categorie,
+                "precedente": cell_text(cells, cols.get("precedente")),
+                "ouverture": cell_text(cells, cols.get("ouverture")),
+                "plus_haut": cell_text(cells, cols.get("plus_haut")),
+                "plus_bas": cell_text(cells, cols.get("plus_bas")),
+                "cloture": cell_text(cells, cols.get("cloture")),
+                "variation_pct": cell_text(cells, cols.get("variation_pct")),
+                "variation_ytd_pct": cell_text(cells, cols.get("variation_ytd_pct")),
+            })
 
-    if not rows_out:
-        raise RuntimeError("Aucun indice trouvé sur " + INDICES_URL + " — en-têtes : " + repr(headers))
+    if not any("composite" in norm(r["nom_indice"]) for r in rows_out):
+        raise RuntimeError(
+            "Indice BRVM Composite introuvable sur " + INDICES_URL +
+            " — la structure de la page a peut-être changé. En-têtes des tableaux trouvés : " +
+            repr([header_cells(t) for t in soup.find_all("table")][:8])
+        )
 
     return rows_out
 

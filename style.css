@@ -248,6 +248,48 @@ a { color: var(--accent); }
 
 .app-footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--ink-muted); font-size: 0.82rem; display: flex; flex-direction: column; gap: 6px; }
 
+/* Indices sectoriels */
+.sector-indices { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: -6px 0 14px; }
+.sector-chip {
+  font-size: 0.78rem; padding: 2px 9px; border-radius: 999px; background: var(--surface-card-hover);
+  border: 1px solid var(--border-soft); color: var(--ink-secondary); white-space: nowrap;
+}
+.sector-chip::first-letter { text-transform: uppercase; }
+
+/* Archives */
+.archive-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: var(--gold-soft); color: var(--ink); border: 1px solid var(--gold);
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.9rem;
+}
+.archive-table tr.current td { background: var(--accent-soft); }
+.btn-secondary { background: var(--surface-card-hover); color: var(--ink); border: 1px solid var(--border); }
+.btn[disabled] { opacity: 0.6; cursor: progress; }
+
+/* Analyse IA */
+.ai-panel { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.ai-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ai-head h2 { margin-bottom: 10px; }
+.ai-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 4px 0 8px; }
+.ai-check { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-secondary); cursor: pointer; }
+.ai-status::before {
+  content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px;
+  background: var(--accent); animation: ai-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ai-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.ai-output { color: var(--ink); font-size: 0.93rem; max-width: 76ch; margin-top: 8px; }
+.ai-output h2, .ai-output h3, .ai-output h4 { font-size: 1rem; margin: 18px 0 6px; }
+.ai-output h2:first-child, .ai-output h3:first-child { margin-top: 4px; }
+.ai-output p { margin: 6px 0; color: var(--ink-secondary); }
+.ai-output ul, .ai-output ol { margin: 6px 0; padding-left: 20px; color: var(--ink-secondary); }
+.ai-output li { margin: 3px 0; }
+.ai-output strong { color: var(--ink); }
+.ai-output code { font-family: "Spline Sans Mono", monospace; font-size: 0.9em; }
+.ai-output .table-scroll { margin: 8px 0; }
+.ai-output hr { border: none; border-top: 1px solid var(--border-soft); margin: 14px 0; }
+.ai-foot { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ai-settings .input { flex: 1 1 220px; }
+
 /* Écrans étroits : le tableau du marché doit garder Symbole / Cours /
    Variation / Signal visibles sans avoir à faire défiler horizontalement —
    ce sont les colonnes qui font tout l'intérêt de l'outil. Secteur et
@@ -268,6 +310,7 @@ a { color: var(--accent); }
   .filters-row .input { flex: 1 1 auto; width: 100%; }
   .add-form { flex-direction: column; align-items: stretch; }
   .add-form .input, .add-form .btn { flex: 1 1 auto; width: 100%; }
+  .archive-banner .btn { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

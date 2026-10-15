@@ -4,10 +4,11 @@ BRVM Conseil : CSS + JS inlinés, pas de dépendance à window.claude, la
 persistance des données utilisateur se fait via localStorage côté navigateur.
 
 Usage:
-    python3 build_standalone_html.py --market market_data.json --out index.html
+    python3 build_standalone_html.py --market market_data.json --archives archives --out index.html
 """
 import argparse
 import json
+from pathlib import Path
 
 
 def safe_json_for_script(obj):
@@ -18,6 +19,7 @@ HEAD_TEMPLATE = """<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BRVM Conseil</title>
+<meta name="description" content="Analyse quotidienne et recommandations sur les valeurs de la BRVM">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Public+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -27,7 +29,7 @@ __CSS__
 </head>"""
 
 
-def build(market_data, css_text, app_js_text):
+def build(market_data, css_text, app_js_text, archive_index=None):
     head = HEAD_TEMPLATE.replace("__CSS__", css_text)
     default_user = {"riskProfile": "equilibre", "portfolio": [], "watchlist": []}
     doc = [
@@ -38,6 +40,7 @@ def build(market_data, css_text, app_js_text):
         '<div id="root"></div>',
         '<script id="market-data" type="application/json">' + safe_json_for_script(market_data) + "</script>",
         '<script id="user-data" type="application/json">' + safe_json_for_script(default_user) + "</script>",
+        '<script id="archive-index" type="application/json">' + safe_json_for_script(archive_index or []) + "</script>",
         "<script>",
         app_js_text,
         "</script>",
@@ -51,6 +54,7 @@ def main():
     ap.add_argument("--market", required=True)
     ap.add_argument("--css", default="style.css")
     ap.add_argument("--js", default="app_standalone.js")
+    ap.add_argument("--archives", default="archives", help="Dossier des archives journalières (index.json embarqué dans la page)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -61,7 +65,13 @@ def main():
     with open(args.js, encoding="utf-8") as f:
         app_js_text = f.read()
 
-    html = build(market_data, css_text, app_js_text)
+    archive_index = []
+    index_path = Path(args.archives) / "index.json"
+    if index_path.exists():
+        with open(index_path, encoding="utf-8") as f:
+            archive_index = json.load(f)
+
+    html = build(market_data, css_text, app_js_text, archive_index)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"OK: {len(html)} caractères écrits dans {args.out}")

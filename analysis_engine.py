@@ -68,6 +68,7 @@ def norm_name(s):
 # solide qu'un signal où court, moyen et long terme sont alignés.
 MOMENTUM_WINDOWS = {"court": 5, "moyen": 30, "long": 90}
 MA_WINDOWS = [5, 20, 30, 60, 90]
+VOLATILITY_WINDOW = 30
 
 # Nombre minimal de points requis sur chaque horizon pour que celui-ci
 # compte dans le calcul d'alignement de tendance (on ne réclame pas un
@@ -108,10 +109,14 @@ def compute_indicators(history_points):
         pct, used = momentum_over(w)
         momentum[key] = {"pct": round(pct, 2) if pct is not None else None, "fenetre": used}
 
+    # Volatilité « récente » : écart-type des variations journalières sur
+    # les VOLATILITY_WINDOW dernières séances seulement (et non sur tout
+    # l'historique, qui peut couvrir jusqu'à un an et diluer un regain
+    # récent de volatilité).
     volatilite_pct = None
     if n >= 3:
         rets = []
-        for i in range(1, n):
+        for i in range(max(1, n - VOLATILITY_WINDOW), n):
             prev = closes[i - 1]
             if prev:
                 rets.append((closes[i] - prev) / prev * 100.0)
@@ -425,21 +430,31 @@ def main():
         nom = row.get("nom_indice", "").strip()
         cloture = to_number(row.get("cloture"))
         variation = to_number(row.get("variation_pct"))
+        precedente = to_number(row.get("precedente"))
         if not nom or cloture is None:
             continue
+        if variation is None and precedente:
+            variation = (cloture - precedente) / precedente * 100.0
         idx_key = "_IDX_" + nom
         idx_points = list(history.get(idx_key, []))
+        if not idx_points and precedente is not None:
+            # Amorçage : la clôture précédente publiée sert de premier point.
+            idx_points.append({"date": "veille", "cloture": precedente, "volume": None})
         idx_points = [p for p in idx_points if p.get("date") != args.date]
         idx_points.append({"date": args.date, "cloture": cloture, "volume": None})
         history[idx_key] = idx_points
         idx_ind = compute_indicators(idx_points)
         indices_out.append({
             "nom": nom,
+            "categorie": row.get("categorie") or "principal",
             "cloture": cloture,
-            "variation_pct": variation,
+            "variation_pct": round(variation, 2) if variation is not None else None,
+            "variation_ytd_pct": to_number(row.get("variation_ytd_pct")),
             "indicateurs": idx_ind,
         })
-        if "composite" in norm_name(nom):
+        # « BRVM - COMPOSITE TOTAL RETURN » contient aussi « composite » :
+        # on ne retient que l'indice de prix, référence de la force relative.
+        if "composite" in norm_name(nom) and "total return" not in norm_name(nom) and composite_ind is None:
             composite_ind = idx_ind
 
     stocks_out = []
