@@ -77,8 +77,9 @@
     return "flat";
   }
   function todayIso() {
+    // Date locale de l'utilisateur (et non UTC), pour les saisies du jour.
     var d = new Date();
-    return d.toISOString().slice(0, 10);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   }
   function debounce(fn, ms) {
     var t = null;
@@ -283,56 +284,289 @@
     return box;
   }
 
-  function positionRow(pos) {
-    var s = findStock(pos.symbole);
+  // ------------------------------------------------- portefeuille (registre)
+  // Le portefeuille est tenu sous forme de registre d'opérations (achats,
+  // ventes, dividendes). Les positions, le prix de revient unitaire (PRU)
+  // et les plus/moins-values en sont déduits par la méthode du prix moyen
+  // pondéré : les frais d'achat s'ajoutent au coût, les frais de vente se
+  // déduisent du produit de cession. state.user.portfolio (positions
+  // ouvertes) est recalculé à partir du registre et sert au reste de l'appli.
+  var TX_TYPES = {
+    achat: { label: "Achat", qty: "Quantité achetée", price: "Prix unitaire (FCFA)" },
+    vente: { label: "Vente", qty: "Quantité vendue", price: "Prix unitaire (FCFA)" },
+    dividende: { label: "Dividende", qty: "Nombre d'actions", price: "Dividende net par action (FCFA)" }
+  };
+
+  function sortedTransactions(upToDate) {
+    return (state.user.transactions || [])
+      .filter(function (t) { return !upToDate || t.date <= upToDate; })
+      .slice().sort(function (a, b) { return a.date === b.date ? (a.seq || 0) - (b.seq || 0) : (a.date < b.date ? -1 : 1); });
+  }
+
+  function computeLedger(upToDate) {
+    var pos = {}, rows = [];
+    var totals = { realized: 0, dividends: 0, fees: 0, bought: 0, sold: 0 };
+    sortedTransactions(upToDate).forEach(function (t) {
+      var p = pos[t.symbole] || (pos[t.symbole] = { symbole: t.symbole, qty: 0, cost: 0, realized: 0, dividends: 0, firstBuy: null });
+      var q = Number(t.quantite) || 0, px = Number(t.prix) || 0, fees = Number(t.frais) || 0;
+      var row = { tx: t, montant: null, realized: null, warning: null };
+      totals.fees += fees;
+      if (t.type === "achat") {
+        if (p.qty === 0) p.firstBuy = t.date;
+        p.qty += q; p.cost += q * px + fees;
+        row.montant = -(q * px + fees);
+        totals.bought += q * px + fees;
+      } else if (t.type === "vente") {
+        var sellQty = Math.min(q, p.qty);
+        if (sellQty < q) row.warning = "Vente supérieure à la quantité détenue à cette date (" + fmtNum(p.qty, 0) + ").";
+        var pru = p.qty ? p.cost / p.qty : 0;
+        var proceeds = sellQty * px - fees;
+        row.realized = proceeds - pru * sellQty;
+        row.montant = proceeds;
+        p.realized += row.realized; totals.realized += row.realized; totals.sold += proceeds;
+        p.cost -= pru * sellQty; p.qty -= sellQty;
+        if (p.qty <= 1e-9) { p.qty = 0; p.cost = 0; }
+      } else if (t.type === "dividende") {
+        row.montant = q * px - fees;
+        p.dividends += row.montant; totals.dividends += row.montant;
+      }
+      rows.push(row);
+    });
+    var positions = Object.keys(pos).map(function (k) { return pos[k]; });
+    return { positions: positions, open: positions.filter(function (p) { return p.qty > 0; }), rows: rows, totals: totals };
+  }
+
+  // Positions ouvertes à la date de la séance affichée (une séance archivée
+  // ne tient compte que des opérations antérieures).
+  function syncPortfolio() {
+    var ledger = computeLedger(state.view.date ? state.market.asOfDate : null);
+    state.user.portfolio = ledger.open.map(function (p) {
+      return { symbole: p.symbole, quantite: p.qty, prix_achat: p.cost / p.qty, date_achat: p.firstBuy };
+    });
+    state.ledger = ledger;
+  }
+
+  function addTransaction(t) {
+    state.user.transactions = state.user.transactions || [];
+    t.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    t.seq = Date.now();
+    state.user.transactions.push(t);
+    syncPortfolio(); render(); saveUserState();
+  }
+  function removeTransaction(t) {
+    if (!confirm("Supprimer cette opération (" + TX_TYPES[t.type].label.toLowerCase() + " " + t.symbole + " du " + t.date + ") ?")) return;
+    state.user.transactions = (state.user.transactions || []).filter(function (x) { return x !== t; });
+    syncPortfolio(); render(); saveUserState();
+  }
+
+  function heldAt(symb, date) {
+    var p = computeLedger(date).positions.filter(function (x) { return x.symbole === symb; })[0];
+    return p ? p.qty : 0;
+  }
+
+  function signedFCFA(x) { return x == null ? "—" : (x >= 0 ? "+" : "") + fmtNum(x, 0) + " FCFA"; }
+
+  function positionRow(p, totalVal) {
+    var s = findStock(p.symbole);
     var cours = s ? s.cours_cloture : null;
-    var valeur = cours != null ? cours * pos.quantite : null;
-    var cout = pos.prix_achat * pos.quantite;
-    var pnl = valeur != null ? valeur - cout : null;
-    var pnlPct = pnl != null && cout ? (pnl / cout) * 100 : null;
+    var valeur = cours != null ? cours * p.qty : null;
+    var pnl = valeur != null ? valeur - p.cost : null;
+    var pnlPct = pnl != null && p.cost ? (pnl / p.cost) * 100 : null;
     var reco = s ? s.recommandations[state.user.riskProfile] : null;
     return el("tr", {}, [
-      el("td", { class: "mono" }, [pos.symbole]),
-      el("td", { class: "name-cell" }, [s ? s.nom : pos.symbole]),
-      el("td", { class: "num" }, [fmtNum(pos.quantite, 0)]),
-      el("td", { class: "num" }, [fmtFCFA(pos.prix_achat)]),
-      el("td", { class: "num" }, [fmtFCFA(cours)]),
-      el("td", { class: "num" }, [fmtFCFA(valeur)]),
+      el("td", { class: "mono" }, [p.symbole]),
+      el("td", { class: "name-cell" }, [s ? s.nom : p.symbole]),
+      el("td", { class: "num" }, [fmtNum(p.qty, 0)]),
+      el("td", { class: "num" }, [fmtNum(p.cost / p.qty, 0)]),
+      el("td", { class: "num" }, [fmtNum(cours, 0)]),
+      el("td", { class: "num" }, [fmtNum(valeur, 0)]),
       el("td", { class: "num " + pctClass(pnl) }, [pnl == null ? "—" : (pnl >= 0 ? "+" : "") + fmtNum(pnl, 0) + " (" + fmtPct(pnlPct) + ")"]),
+      el("td", { class: "num muted" }, [valeur != null && totalVal ? fmtNum(valeur / totalVal * 100, 0) + " %" : "—"]),
       el("td", {}, [reco ? signalBadge(reco.signal) : "—"]),
-      el("td", {}, [el("button", { class: "icon-btn", title: "Retirer", onclick: function () { removePosition(pos); } }, ["✕"])])
+      el("td", {}, [state.view.date ? null : el("button", { class: "link-btn small", onclick: function () {
+        state.ui.txForm = { type: "vente", symbole: p.symbole, date: todayIso(), quantite: String(p.qty), prix: cours != null ? String(cours) : "", frais: "" };
+        render();
+        var f = document.getElementById("tx-form"); if (f) f.scrollIntoView({ behavior: "smooth", block: "center" });
+      } }, ["Vendre"])])
     ]);
   }
-  
+
+  function statTile(label, value, cls, sub) {
+    return el("div", { class: "stat-tile" }, [
+      el("div", { class: "stat-label" }, [label]),
+      el("div", { class: "stat-value " + (cls || "") }, [value]),
+      sub ? el("div", { class: "stat-delta " + (cls || "") }, [sub]) : null
+    ]);
+  }
+
   function renderPortfolio() {
-    var box = el("section", { class: "panel" }, [el("h2", {}, ["Mon portefeuille"])]);
-    var portfolio = state.user.portfolio || [];
-    if (portfolio.length) {
-      var totalCout = 0, totalVal = 0;
-      portfolio.forEach(function (pos) {
-        var s = findStock(pos.symbole);
-        totalCout += pos.prix_achat * pos.quantite;
-        if (s && s.cours_cloture != null) totalVal += s.cours_cloture * pos.quantite;
-      });
-      var totalPnl = totalVal - totalCout;
-      var totalPnlPct = totalCout ? (totalPnl / totalCout) * 100 : null;
+    var ledger = state.ledger || computeLedger(null);
+    var box = el("section", { class: "panel portfolio-panel" }, [el("h2", {}, ["Mon portefeuille"])]);
+    var totalVal = 0, openCost = 0, missing = 0;
+    ledger.open.forEach(function (p) {
+      var s = findStock(p.symbole);
+      openCost += p.cost;
+      if (s && s.cours_cloture != null) totalVal += s.cours_cloture * p.qty; else missing++;
+    });
+    var latent = totalVal - openCost;
+    var t = ledger.totals;
+    var result = latent + t.realized + t.dividends;
+    if (ledger.rows.length) {
       box.appendChild(el("div", { class: "portfolio-summary" }, [
-        el("div", { class: "stat-tile" }, [el("div", { class: "stat-label" }, ["Valeur totale"]), el("div", { class: "stat-value" }, [fmtFCFA(totalVal)])]),
-        el("div", { class: "stat-tile" }, [el("div", { class: "stat-label" }, ["Coût d'acquisition"]), el("div", { class: "stat-value" }, [fmtFCFA(totalCout)])]),
-        el("div", { class: "stat-tile" }, [el("div", { class: "stat-label" }, ["Plus/moins-value"]), el("div", { class: "stat-value " + pctClass(totalPnl) }, [(totalPnl >= 0 ? "+" : "") + fmtNum(totalPnl, 0) + " FCFA (" + fmtPct(totalPnlPct) + ")"])])
+        statTile("Valeur actuelle", fmtFCFA(totalVal), "", ledger.open.length + " ligne(s)"),
+        statTile("Coût des positions", fmtFCFA(openCost)),
+        statTile("+/- value latente", signedFCFA(latent), pctClass(latent), openCost ? fmtPct(latent / openCost * 100) : null),
+        statTile("+/- value réalisée", signedFCFA(t.realized), pctClass(t.realized)),
+        statTile("Dividendes encaissés", fmtFCFA(t.dividends)),
+        statTile("Résultat total", signedFCFA(result), pctClass(result), t.bought ? fmtPct(result / t.bought * 100) + " des montants investis" : null)
       ]));
+      if (missing) box.appendChild(el("p", { class: "muted small" }, [missing + " ligne(s) sans cours disponible ce jour, exclue(s) de la valeur actuelle."]));
+    }
+    if (ledger.open.length) {
       var tableWrap = el("div", { class: "table-scroll" });
-      var table = el("table", { class: "data-table" }, [
-        el("thead", {}, [el("tr", {}, ["Symbole", "Nom", "Qté", "PRU", "Cours", "Valorisation", "+/- value", "Signal", ""].map(function (h) { return el("th", {}, [h]); }))]),
-        el("tbody", {}, portfolio.map(positionRow))
-      ]);
-      tableWrap.appendChild(table);
+      tableWrap.appendChild(el("table", { class: "data-table" }, [
+        el("thead", {}, [el("tr", {}, ["Symbole", "Nom", "Qté", "PRU", "Cours", "Valorisation", "+/- latente", "Poids", "Signal", ""].map(function (h) { return el("th", {}, [h]); }))]),
+        el("tbody", {}, ledger.open.map(function (p) { return positionRow(p, totalVal); }))
+      ]));
       box.appendChild(tableWrap);
     } else {
-      box.appendChild(el("p", { class: "muted small" }, ["Aucune position enregistrée. Ajoutez vos actions détenues pour suivre votre plus/moins-value et recevoir des signaux personnalisés."]));
+      box.appendChild(el("p", { class: "muted small" }, [ledger.rows.length
+        ? "Aucune position ouverte à cette date."
+        : "Enregistrez vos opérations (achats, ventes, dividendes) : positions, prix de revient et plus/moins-values sont calculés automatiquement."]));
     }
-    box.appendChild(renderAddPositionForm());
+    if (!state.view.date) box.appendChild(renderTxForm());
+    if (ledger.rows.length) box.appendChild(renderTxHistory(ledger));
+    box.appendChild(el("div", { class: "add-form portfolio-io" }, [
+      ledger.rows.length ? el("button", { class: "btn btn-secondary", onclick: exportTransactionsCsv }, ["Exporter les opérations (CSV)"]) : null,
+      el("button", { class: "btn btn-secondary", onclick: backupUserData }, ["Sauvegarder mes données"]),
+      el("label", { class: "btn btn-secondary", for: "restore-input" }, ["Restaurer une sauvegarde"]),
+      (function () {
+        var input = el("input", { type: "file", accept: ".json,application/json", id: "restore-input", class: "visually-hidden" });
+        input.addEventListener("change", function () { if (input.files[0]) restoreUserData(input.files[0]); input.value = ""; });
+        return input;
+      })()
+    ]));
+    box.appendChild(el("p", { class: "muted small" }, [
+      "Calcul au prix moyen pondéré, frais inclus ; montants avant impôts. Vos données restent dans ce navigateur : pensez à les sauvegarder."
+    ]));
     return box;
+  }
+
+  function renderTxForm() {
+    var f = state.ui.txForm || (state.ui.txForm = { type: "achat", symbole: "", date: todayIso(), quantite: "", prix: "", frais: "" });
+    var meta = TX_TYPES[f.type];
+    function bind(input, key) {
+      input.value = f[key] || "";
+      input.addEventListener("input", function () { f[key] = input.value; });
+      return input;
+    }
+    var typeSel = el("select", { class: "input", "aria-label": "Type d'opération" }, Object.keys(TX_TYPES).map(function (k) { return el("option", { value: k }, [TX_TYPES[k].label]); }));
+    typeSel.value = f.type;
+    typeSel.addEventListener("change", function () { f.type = typeSel.value; render(); });
+    var symbSel = el("select", { class: "input", "aria-label": "Valeur" }, [el("option", { value: "" }, ["Valeur…"])].concat(symbolOptions()));
+    symbSel.value = f.symbole;
+    symbSel.addEventListener("change", function () {
+      f.symbole = symbSel.value;
+      var s = findStock(f.symbole);
+      if (s && f.type !== "dividende" && !f.prix) f.prix = String(s.cours_cloture);
+      if (f.type === "dividende" && s) f.quantite = String(heldAt(f.symbole, f.date || todayIso()) || "");
+      render();
+    });
+    var dateInput = bind(el("input", { class: "input", type: "date", max: todayIso(), "aria-label": "Date" }), "date");
+    var qtyInput = bind(el("input", { class: "input", type: "number", min: "1", step: "1", placeholder: meta.qty, "aria-label": meta.qty }), "quantite");
+    var priceInput = bind(el("input", { class: "input", type: "number", min: "0", step: "any", placeholder: meta.price, "aria-label": meta.price }), "prix");
+    var feesInput = bind(el("input", { class: "input", type: "number", min: "0", step: "any", placeholder: "Frais (FCFA, optionnel)", "aria-label": "Frais" }), "frais");
+    var form = el("form", {
+      class: "tx-form", id: "tx-form",
+      onsubmit: function (ev) {
+        ev.preventDefault();
+        var q = parseFloat(f.quantite), px = parseFloat(f.prix), fees = parseFloat(f.frais) || 0;
+        var err = null;
+        if (!f.symbole) err = "Choisissez une valeur.";
+        else if (!f.date) err = "Indiquez la date.";
+        else if (f.date > todayIso()) err = "La date ne peut pas être dans le futur.";
+        else if (!(q > 0)) err = "Quantité invalide.";
+        else if (!(px > 0)) err = "Prix invalide.";
+        else if (fees < 0) err = "Frais invalides.";
+        else if (f.type === "vente") {
+          var held = heldAt(f.symbole, f.date);
+          if (q > held + 1e-9) err = "Vous ne détenez que " + fmtNum(held, 0) + " " + f.symbole + " au " + f.date + ".";
+        }
+        state.ui.txError = err;
+        if (err) { render(); return; }
+        addTransaction({ type: f.type, symbole: f.symbole, date: f.date, quantite: q, prix: px, frais: fees });
+        state.ui.txForm = { type: f.type, symbole: "", date: f.date, quantite: "", prix: "", frais: "" };
+        render();
+      }
+    }, [
+      el("div", { class: "muted small tx-title" }, ["Nouvelle opération"]),
+      el("div", { class: "add-form" }, [typeSel, symbSel, dateInput]),
+      el("div", { class: "add-form" }, [qtyInput, priceInput, feesInput, el("button", { class: "btn", type: "submit" }, ["Enregistrer"])]),
+      state.ui.txError ? el("p", { class: "small concentration-warning" }, ["⚠ " + state.ui.txError]) : null
+    ]);
+    return form;
+  }
+
+  function renderTxHistory(ledger) {
+    var open = !!state.ui.txOpen;
+    var wrap = el("div", { class: "tx-history" }, [
+      el("button", { class: "link-btn", onclick: function () { state.ui.txOpen = !open; render(); } },
+        [(open ? "− Masquer" : "+ Afficher") + " l'historique des opérations (" + ledger.rows.length + ")"])
+    ]);
+    if (!open) return wrap;
+    var rows = ledger.rows.slice().reverse();
+    var tableWrap = el("div", { class: "table-scroll" });
+    tableWrap.appendChild(el("table", { class: "data-table" }, [
+      el("thead", {}, [el("tr", {}, ["Date", "Opération", "Valeur", "Qté", "Prix", "Frais", "Montant", "+/- réalisée", ""].map(function (h) { return el("th", {}, [h]); }))]),
+      el("tbody", {}, rows.map(function (r) {
+        var t = r.tx;
+        return el("tr", { title: r.warning || "" }, [
+          el("td", { class: "num" }, [t.date.split("-").reverse().join("/")]),
+          el("td", {}, [el("span", { class: "badge tone-" + (t.type === "achat" ? "neutral" : t.type === "vente" ? "warning" : "good-soft") }, [TX_TYPES[t.type].label]), r.warning ? " ⚠" : null]),
+          el("td", { class: "mono" }, [t.symbole]),
+          el("td", { class: "num" }, [fmtNum(t.quantite, 0)]),
+          el("td", { class: "num" }, [fmtNum(t.prix, t.prix % 1 ? 2 : 0)]),
+          el("td", { class: "num muted" }, [t.frais ? fmtNum(t.frais, 0) : "—"]),
+          el("td", { class: "num " + (t.type === "achat" ? "muted" : pctClass(r.montant)) }, [signedFCFA(r.montant)]),
+          el("td", { class: "num " + pctClass(r.realized) }, [r.realized == null ? "" : signedFCFA(r.realized)]),
+          el("td", {}, [el("button", { class: "icon-btn", title: "Supprimer l'opération", onclick: function () { removeTransaction(t); } }, ["✕"])])
+        ]);
+      }))
+    ]));
+    wrap.appendChild(tableWrap);
+    return wrap;
+  }
+
+  function exportTransactionsCsv() {
+    var ledger = computeLedger(null);
+    var lines = [["Date", "Opération", "Symbole", "Quantité", "Prix unitaire", "Frais", "Montant net", "Plus/moins-value réalisée"].join(";")];
+    ledger.rows.forEach(function (r) {
+      var t = r.tx;
+      lines.push([t.date, TX_TYPES[t.type].label, t.symbole, t.quantite, t.prix, t.frais || 0,
+        r.montant != null ? Math.round(r.montant) : "", r.realized != null ? Math.round(r.realized) : ""].map(csvCell).join(";"));
+    });
+    downloadBlob("brvm-operations-" + todayIso() + ".csv", "text/csv;charset=utf-8", "﻿" + lines.join("\r\n"));
+  }
+
+  function backupUserData() {
+    var data = { format: "brvm-conseil-sauvegarde", version: 1, exportedAt: new Date().toISOString(),
+      riskProfile: state.user.riskProfile, transactions: state.user.transactions || [], watchlist: state.user.watchlist || [],
+      recherches: readJsonStorage(RESEARCH_KEY, []) };
+    downloadBlob("brvm-conseil-sauvegarde-" + todayIso() + ".json", "application/json", JSON.stringify(data, null, 1));
+  }
+
+  function restoreUserData(file) {
+    file.text().then(function (txt) {
+      var d = JSON.parse(txt);
+      if (d.format !== "brvm-conseil-sauvegarde" || !Array.isArray(d.transactions)) throw new Error("Ce fichier n'est pas une sauvegarde BRVM Conseil.");
+      if (!confirm("Remplacer vos opérations (" + (state.user.transactions || []).length + ") et votre liste de suivi par celles de la sauvegarde du " +
+        String(d.exportedAt).slice(0, 10) + " (" + d.transactions.length + " opérations) ?")) return;
+      state.user.transactions = d.transactions;
+      state.user.watchlist = d.watchlist || [];
+      if (d.riskProfile) state.user.riskProfile = d.riskProfile;
+      if (Array.isArray(d.recherches)) writeJsonStorage(RESEARCH_KEY, d.recherches);
+      syncPortfolio(); loadCachedAi(); render(); saveUserState();
+    }).catch(function (e) { alert("Restauration impossible : " + e.message); });
   }
 
   // Vue de risque de concentration : indépendante des signaux par valeur,
@@ -402,29 +636,6 @@
   function symbolOptions(selectedFirst) {
     var syms = (state.market.stocks || []).slice().sort(function (a, b) { return a.symbole < b.symbole ? -1 : 1; });
     return syms.map(function (s) { return el("option", { value: s.symbole }, [s.symbole + " — " + s.nom]); });
-  }
-
-  function renderAddPositionForm() {
-    var symbSel = el("select", { class: "input" }, symbolOptions());
-    var qtyInput = el("input", { class: "input", type: "number", min: "1", step: "1", placeholder: "Quantité" });
-    var priceInput = el("input", { class: "input", type: "number", min: "0", step: "1", placeholder: "Prix d'achat (FCFA)" });
-    var dateInput = el("input", { class: "input", type: "date", value: todayIso() });
-    var form = el("form", {
-      class: "add-form",
-      onsubmit: function (ev) {
-        ev.preventDefault();
-        var symb = symbSel.value;
-        var qty = parseFloat(qtyInput.value);
-        var price = parseFloat(priceInput.value);
-        if (!symb || !qty || qty <= 0 || !price || price <= 0) return;
-        addPosition({ symbole: symb, quantite: qty, prix_achat: price, date_achat: dateInput.value || todayIso() });
-        qtyInput.value = ""; priceInput.value = "";
-      }
-    }, [
-      symbSel, qtyInput, priceInput, dateInput,
-      el("button", { class: "btn", type: "submit" }, ["Ajouter la position"])
-    ]);
-    return form;
   }
 
   function renderWatchlist() {
@@ -638,6 +849,7 @@
     fetchArchive(date).then(function (archive) {
       state.view = { date: date, loading: null, error: null };
       state.market = marketForArchive(archive);
+      syncPortfolio();
       state.ui.expanded = null;
       loadCachedAi();
       render();
@@ -652,6 +864,7 @@
   function closeArchive() {
     state.view = { date: null, loading: null, error: null };
     state.market = state.live;
+    syncPortfolio();
     state.ui.expanded = null;
     loadCachedAi();
     render();
@@ -830,6 +1043,12 @@
       out.push("Valeur totale : " + Math.round(b.totalVal) + " FCFA.");
       out.push("Répartition sectorielle : " + b.secteurs.map(function (e) { return e.label + " " + e.pct.toFixed(0) + " %"; }).join(", ") + ".");
       out.push("Répartition par pays : " + b.pays.map(function (e) { return e.label + " " + e.pct.toFixed(0) + " %"; }).join(", ") + ".");
+    }
+    var ledger = state.ledger;
+    if (ledger && ledger.rows.length) {
+      out.push("Plus/moins-values réalisées : " + Math.round(ledger.totals.realized) + " FCFA ; dividendes encaissés : " + Math.round(ledger.totals.dividends) + " FCFA.");
+      out.push("", "### Dernières opérations (date | type | valeur | quantité | prix)");
+      ledger.rows.slice(-10).forEach(function (r) { out.push([r.tx.date, r.tx.type, r.tx.symbole, r.tx.quantite, r.tx.prix].join(" | ")); });
     }
     if (watch.length) out.push("", "### Liste de suivi : " + watch.join(", "));
     if (!portfolio.length && !watch.length) out.push("Ni portefeuille ni liste de suivi renseignés : omets cette section mais adapte l'analyse au profil.");
@@ -1156,6 +1375,335 @@
         "Analyse générée par une IA à partir des seules données de l'outil : elle peut contenir des erreurs et ne constitue pas un conseil en investissement."
       ]));
     }
+    return box;
+  }
+
+  // --------------------------------------------------------- recherche IA
+  // L'IA mène ses propres recherches sur le web (outils serveur web_search /
+  // web_fetch de l'API Claude) : résultats publiés, dividendes, notes
+  // d'analystes, presse financière... puis croise ce qu'elle trouve avec le
+  // dossier quantitatif de la séance et les documents de l'utilisateur pour
+  // retenir 2 valeurs. Chaque recherche est conservée avec le cours du jour
+  // de la recommandation, pour suivre ensuite sa performance réelle.
+  var RESEARCH_KEY = "brvm-conseil-research-v1";
+  var RESEARCH_MAX_TURNS = 6;
+
+  var RESEARCH_SYSTEM = [
+    "Tu es un analyste actions senior spécialisé sur la BRVM (Bourse Régionale des Valeurs Mobilières de l'UEMOA, Abidjan). Ta mission : identifier les 2 actions cotées à la BRVM qui présentent aujourd'hui le meilleur potentiel sur un horizon de 1 à 3 mois, en croisant :",
+    "1. tes propres recherches sur le web (outils web_search et web_fetch) ;",
+    "2. le dossier quantitatif de la séance fourni (facteurs, signaux, fiabilité mesurée du modèle) ;",
+    "3. les fiches de documents fournis par l'investisseur, s'il y en a.",
+    "",
+    "Méthode :",
+    "- Recherche d'abord largement : publications de résultats récentes (annuels, semestriels, trimestriels), dividendes annoncés et dates de détachement, notes et recommandations d'analystes, de SGI et de courtiers, presse financière régionale et sites spécialisés sur la BRVM, actualité sectorielle et macroéconomique de l'UEMOA. Privilégie les sources des 3 derniers mois et relève la date de chacune. Multiplie les sources : la convergence de plusieurs analyses indépendantes compte plus qu'un avis isolé.",
+    "- Dresse une présélection de 5 à 8 valeurs, puis compare-les sur : dynamique des résultats, valorisation (PER, rendement du dividende quand tu trouves les chiffres), catalyseurs datés à venir, consensus des recommandations trouvées (combien de sources favorables, neutres, défavorables), signal et facteurs du dossier quantitatif, liquidité (capitaux échangés : écarte les valeurs trop peu échangées pour être achetées ou revendues facilement), risques.",
+    "- Retiens exactement 2 valeurs. Tiens compte du profil et du portefeuille de l'investisseur s'ils sont fournis (éviter d'alourdir une concentration existante).",
+    "",
+    "Règles :",
+    "- N'invente jamais un chiffre, une date ou une source. Chaque chiffre fondamental doit provenir d'une source consultée, citée avec sa date.",
+    "- Distingue clairement les faits, les opinions d'analystes et ta propre interprétation.",
+    "- Si les informations trouvées sont rares, anciennes ou contradictoires, dis-le et abaisse la conviction : mieux vaut une conviction « faible » honnête qu'un choix artificiellement assuré.",
+    "- Le dossier quantitatif est un classement RELATIF entre valeurs, pas une prévision de hausse.",
+    "- Pas de promesse de gain : ce sont des pistes d'investissement argumentées, pas un conseil en investissement réglementé.",
+    "",
+    "Format de la réponse finale (Markdown, en français) :",
+    "## Les 2 valeurs retenues",
+    "Un paragraphe de synthèse.",
+    "## 1. NOM (SYMBOLE)",
+    "Thèse d'investissement ; résultats et valorisation (chiffres sourcés) ; catalyseurs à venir ; consensus des sources consultées ; lecture du dossier quantitatif ; risques ; conditions d'entrée et signal d'invalidation ; conviction (forte, moyenne ou faible).",
+    "## 2. NOM (SYMBOLE)",
+    "Même structure.",
+    "## Valeurs étudiées mais écartées",
+    "Tableau : valeur, raison principale.",
+    "## Sources consultées",
+    "Liste : titre, site, date.",
+    "",
+    "Termine OBLIGATOIREMENT par un bloc de code json (et rien après) :",
+    "```json",
+    "{\"winners\": [{\"symbole\": \"XXXX\", \"nom\": \"...\", \"conviction\": \"forte|moyenne|faible\", \"these\": \"une phrase\"}, {\"symbole\": \"YYYY\", \"nom\": \"...\", \"conviction\": \"...\", \"these\": \"...\"}]}",
+    "```"
+  ].join("\n");
+
+  state.research = { running: false, status: "", queries: [], error: null, openId: null, startedAt: null };
+
+  function researchHistory() { return readJsonStorage(RESEARCH_KEY, []); }
+
+  // Appel non streamé : la réponse complète (blocs de recherche, résultats,
+  // signatures) est nécessaire pour reprendre un tour mis en pause
+  // (stop_reason « pause_turn ») en renvoyant le contenu tel quel.
+  function callClaudeOnce(body, model) {
+    var settings = aiSettings();
+    var headers = {
+      "content-type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    };
+    if (model.fallbacks) {
+      body.fallbacks = "default";
+      headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
+    }
+    return fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: headers, body: JSON.stringify(body) }).then(function (resp) {
+      return resp.text().then(function (t) {
+        var data = null;
+        try { data = JSON.parse(t); } catch (e) { /* réponse non JSON */ }
+        if (!resp.ok) {
+          var msg = data && data.error ? data.error.message : t.slice(0, 200);
+          if (resp.status === 401) msg = "Clé API refusée (401). Vérifiez-la dans les paramètres.";
+          else if (resp.status === 429) msg = "Limite de débit atteinte (429), réessayez dans un instant. " + msg;
+          else if (resp.status === 529 || resp.status >= 500) msg = "Service momentanément surchargé (" + resp.status + "), réessayez dans un instant.";
+          else if (/web.?(search|fetch)/i.test(msg)) msg += " (la recherche web doit être autorisée pour votre organisation dans la console Anthropic : Settings → Privacy / Web search).";
+          throw new Error(msg);
+        }
+        return data;
+      });
+    }, function (err) {
+      throw new Error("Impossible de joindre l'API Claude (réseau ou blocage du navigateur). " + err.message);
+    });
+  }
+
+  function researchTools(model) {
+    var dynamic = model.id !== "claude-haiku-5-5";
+    return [
+      { type: dynamic ? "web_search_20260209" : "web_search_20250305", name: "web_search", max_uses: 15,
+        user_location: { type: "approximate", country: "CI", city: "Abidjan", timezone: "Africa/Abidjan" } },
+      { type: dynamic ? "web_fetch_20260209" : "web_fetch_20250910", name: "web_fetch", max_uses: 10 }
+    ];
+  }
+
+  function setResearchStatus(text) {
+    state.research.status = text;
+    var node = document.getElementById("research-status");
+    if (node) node.textContent = text; else render();
+  }
+
+  function runResearch() {
+    var settings = aiSettings();
+    if (!settings.apiKey) { state.ai.tab = "perso"; state.ai.settingsOpen = true; render(); return; }
+    var ctx = state.live.contexteIA;
+    if (!ctx || !ctx.marche) { state.research.error = "Le dossier de la séance n'est pas disponible."; render(); return; }
+    var model = AI_MODELS.filter(function (x) { return x.id === settings.model; })[0] || AI_MODELS[0];
+    var userContent = "Date du jour : " + todayIso() + ". Dernière séance disponible : " + state.live.asOfDate + ".\n\n" +
+      ctx.marche + (settings.includePortfolio ? "\n" + buildPersonalSection() : "") + buildDocumentsSection() +
+      "\n\nMène tes recherches puis présente les 2 valeurs retenues.";
+    var assistantBlocks = [];
+    var turns = 0;
+    state.research = { running: true, status: "L'IA lance ses recherches…", queries: [], error: null, openId: null, startedAt: Date.now() };
+    render();
+    var timer = setInterval(function () {
+      var node = document.getElementById("research-elapsed");
+      if (node) node.textContent = Math.round((Date.now() - state.research.startedAt) / 1000) + " s";
+    }, 1000);
+
+    function step() {
+      turns++;
+      var messages = [{ role: "user", content: userContent }];
+      if (assistantBlocks.length) messages.push({ role: "assistant", content: assistantBlocks });
+      return callClaudeOnce({
+        model: model.id, max_tokens: 16000, system: RESEARCH_SYSTEM,
+        output_config: { effort: "high" }, tools: researchTools(model), messages: messages
+      }, model).then(function (resp) {
+        assistantBlocks = assistantBlocks.concat((resp.content || []).filter(function (b) { return b.type !== "fallback"; }));
+        (resp.content || []).forEach(function (b) {
+          if (b.type === "server_tool_use" && b.input) {
+            state.research.queries.push(b.name === "web_fetch" ? "Lecture : " + b.input.url : "Recherche : « " + b.input.query + " »");
+          }
+        });
+        var nSources = countSources(assistantBlocks);
+        setResearchStatus("Tour " + turns + " : " + state.research.queries.length + " recherche(s)/lecture(s), " + nSources + " source(s) trouvée(s)…");
+        render();
+        if (resp.stop_reason === "pause_turn" && turns < RESEARCH_MAX_TURNS) return step();
+        if (resp.stop_reason === "refusal") throw new Error("Le modèle a refusé de traiter cette demande.");
+        return { resp: resp, model: resp.model || model.id };
+      });
+    }
+
+    step().then(function (res) {
+      clearInterval(timer);
+      var record = buildResearchRecord(assistantBlocks, res.model, res.resp.stop_reason);
+      var hist = researchHistory();
+      hist.unshift(record);
+      writeJsonStorage(RESEARCH_KEY, hist.slice(0, 50));
+      state.research = { running: false, status: "", queries: [], error: null, openId: record.id };
+      render();
+    }).catch(function (e) {
+      clearInterval(timer);
+      state.research.running = false;
+      state.research.error = e && e.message ? e.message : String(e);
+      render();
+    });
+  }
+
+  function countSources(blocks) {
+    var urls = {};
+    blocks.forEach(function (b) {
+      if (b.type === "web_search_tool_result" && Array.isArray(b.content)) b.content.forEach(function (r) { if (r.url) urls[r.url] = 1; });
+      if (b.type === "web_fetch_tool_result" && b.content && b.content.url) urls[b.content.url] = 1;
+    });
+    return Object.keys(urls).length;
+  }
+
+  function buildResearchRecord(blocks, model, stopReason) {
+    // Le rapport final = blocs texte après le dernier résultat d'outil.
+    var lastTool = -1;
+    blocks.forEach(function (b, i) { if (/_tool_result$/.test(b.type) || b.type === "server_tool_use") lastTool = i; });
+    var text = blocks.slice(lastTool + 1).filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("");
+    if (!text.trim()) text = blocks.filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("");
+    var winners = [];
+    var m = text.match(/```json\s*([\s\S]*?)```\s*$/) || text.match(/```json\s*([\s\S]*?)```/);
+    if (m) {
+      try { winners = (JSON.parse(m[1]).winners || []).slice(0, 2); } catch (e) { winners = []; }
+      text = text.replace(m[0], "").trim();
+    }
+    if (stopReason === "max_tokens") text += "\n\n*(Rapport tronqué : limite de longueur atteinte.)*";
+    else if (stopReason === "pause_turn") text += "\n\n*(Recherche interrompue après " + RESEARCH_MAX_TURNS + " tours : rapport possiblement incomplet.)*";
+    var sources = {};
+    blocks.forEach(function (b) {
+      if (b.type === "text" && Array.isArray(b.citations)) b.citations.forEach(function (c) { if (c.url) sources[c.url] = { url: c.url, title: c.title || c.url, cite: true }; });
+      if (b.type === "web_search_tool_result" && Array.isArray(b.content)) b.content.forEach(function (r) {
+        if (r.url && !sources[r.url]) sources[r.url] = { url: r.url, title: r.title || r.url, age: r.page_age || null };
+      });
+    });
+    winners = winners.map(function (w) {
+      var s = (state.live.stocks || []).filter(function (x) { return x.symbole === w.symbole; })[0];
+      return { symbole: w.symbole, nom: w.nom || (s && s.nom) || w.symbole, conviction: w.conviction, these: w.these, prix: s ? s.cours_cloture : null };
+    });
+    var queries = blocks.filter(function (b) { return b.type === "server_tool_use" && b.input; })
+      .map(function (b) { return b.name === "web_fetch" ? b.input.url : b.input.query; });
+    return {
+      id: Date.now().toString(36), at: new Date().toISOString(), asOfDate: state.live.asOfDate, model: model,
+      text: text, winners: winners,
+      sources: Object.keys(sources).map(function (k) { return sources[k]; }).sort(function (a, b) { return (b.cite ? 1 : 0) - (a.cite ? 1 : 0); }),
+      queries: queries
+    };
+  }
+
+  // Performance moyenne des valeurs de la cote entre deux séances, comme
+  // point de comparaison pour les recommandations.
+  function marketAvgPerf(fromDate) {
+    var hist = state.live.history || {}, ratios = [];
+    Object.keys(hist).forEach(function (k) {
+      if (k.indexOf("_IDX_") === 0) return;
+      var pts = hist[k], from = null, last = pts[pts.length - 1];
+      for (var i = 0; i < pts.length; i++) if (pts[i].date === fromDate) { from = pts[i]; break; }
+      if (from && last && from.cloture) ratios.push(last.cloture / from.cloture - 1);
+    });
+    return ratios.length ? ratios.reduce(function (a, b) { return a + b; }, 0) / ratios.length * 100 : null;
+  }
+
+  function winnerPerf(w) {
+    var s = (state.live.stocks || []).filter(function (x) { return x.symbole === w.symbole; })[0];
+    return s && w.prix ? { cours: s.cours_cloture, perf: (s.cours_cloture / w.prix - 1) * 100 } : { cours: s ? s.cours_cloture : null, perf: null };
+  }
+
+  var CONVICTION_TONE = { forte: "good", moyenne: "good-soft", faible: "warning" };
+
+  function renderWinnerCard(w, record) {
+    var p = winnerPerf(w);
+    var inWatch = (state.user.watchlist || []).indexOf(w.symbole) !== -1;
+    return el("div", { class: "winner-card" }, [
+      el("div", { class: "winner-head" }, [
+        el("span", { class: "mono winner-symb" }, [w.symbole]),
+        el("span", { class: "winner-name" }, [w.nom]),
+        w.conviction ? el("span", { class: "badge tone-" + (CONVICTION_TONE[w.conviction] || "neutral") }, ["Conviction " + w.conviction]) : null
+      ]),
+      w.these ? el("p", { class: "small winner-these" }, [w.these]) : null,
+      el("div", { class: "small muted" }, [
+        "Cours le " + record.asOfDate.split("-").reverse().join("/") + " : " + fmtFCFA(w.prix) +
+        (record.asOfDate !== state.live.asOfDate ? " · aujourd'hui : " + fmtFCFA(p.cours) + " " : ""),
+        record.asOfDate !== state.live.asOfDate && p.perf != null ? el("b", { class: pctClass(p.perf) }, ["(" + fmtPct(p.perf) + ")"]) : null
+      ]),
+      inWatch ? el("span", { class: "muted small" }, ["✓ Dans votre liste de suivi"]) :
+        el("button", { class: "link-btn small", onclick: function () { addWatch(w.symbole); } }, ["+ Ajouter à ma liste de suivi"])
+    ]);
+  }
+
+  function renderResearchReport(record) {
+    var wrap = el("div", { class: "research-report" }, [
+      el("div", { class: "winners" }, record.winners.map(function (w) { return renderWinnerCard(w, record); })),
+      record.winners.length ? null : el("p", { class: "small concentration-warning" }, ["Les 2 valeurs n'ont pas pu être extraites automatiquement : voir le rapport ci-dessous."]),
+      el("div", { class: "ai-output", html: renderMarkdown(record.text) })
+    ]);
+    if (record.sources.length) {
+      wrap.appendChild(el("details", { class: "research-sources small" }, [
+        el("summary", {}, [record.sources.length + " source(s) web consultée(s) · " + record.queries.length + " recherche(s)"]),
+        el("ul", {}, record.sources.slice(0, 60).map(function (s) {
+          var safe = /^https?:\/\//i.test(s.url);
+          return el("li", {}, [safe ? el("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, [s.title]) : s.title, s.cite ? el("span", { class: "muted" }, [" · citée"]) : null, s.age ? el("span", { class: "muted" }, [" · " + s.age]) : null]);
+        }))
+      ]));
+    }
+    wrap.appendChild(el("div", { class: "ai-foot" }, [
+      el("span", { class: "muted small" }, ["Recherche du " + new Date(record.at).toLocaleString("fr-FR") + " par " + aiModelLabel(record.model) + ". "]),
+      el("button", { class: "link-btn small", onclick: function () {
+        downloadBlob("recherche-ia-brvm-" + record.at.slice(0, 10) + ".md", "text/markdown;charset=utf-8",
+          "# Recherche IA — " + new Date(record.at).toLocaleDateString("fr-FR") + "\n\n" + record.text + "\n\n## Liens\n" + record.sources.map(function (s) { return "- [" + s.title + "](" + s.url + ")"; }).join("\n"));
+      } }, ["Télécharger (.md)"])
+    ]));
+    return wrap;
+  }
+
+  function renderResearchHistory(hist) {
+    var rows = hist.filter(function (r) { return r.winners && r.winners.length; });
+    if (!rows.length) return null;
+    var wrap = el("div", { class: "research-history" }, [el("div", { class: "muted small tx-title" }, ["Suivi des recommandations passées (performance depuis la recommandation, comparée à la moyenne du marché)"])]);
+    var tableWrap = el("div", { class: "table-scroll" });
+    tableWrap.appendChild(el("table", { class: "data-table" }, [
+      el("thead", {}, [el("tr", {}, ["Date", "Valeur", "Cours reco", "Cours actuel", "Perf.", "Marché", "Écart", ""].map(function (h) { return el("th", {}, [h]); }))]),
+      el("tbody", {}, rows.reduce(function (acc, r) {
+        var mkt = r.asOfDate === state.live.asOfDate ? 0 : marketAvgPerf(r.asOfDate);
+        return acc.concat(r.winners.map(function (w, i) {
+          var p = winnerPerf(w);
+          var diff = p.perf != null && mkt != null ? p.perf - mkt : null;
+          return el("tr", {}, [
+            el("td", { class: "num" }, [i === 0 ? r.asOfDate.split("-").reverse().join("/") : ""]),
+            el("td", { class: "mono" }, [w.symbole]),
+            el("td", { class: "num" }, [fmtNum(w.prix, 0)]),
+            el("td", { class: "num" }, [fmtNum(p.cours, 0)]),
+            el("td", { class: "num " + pctClass(p.perf) }, [fmtPct(p.perf)]),
+            el("td", { class: "num muted" }, [fmtPct(mkt)]),
+            el("td", { class: "num " + pctClass(diff) }, [diff == null ? "—" : (diff >= 0 ? "+" : "") + fmtNum(diff, 2) + " pt"]),
+            el("td", {}, [i === 0 ? el("button", { class: "link-btn small", onclick: function () { state.research.openId = r.id; render(); } }, ["Rapport"]) : null])
+          ]);
+        }));
+      }, []))
+    ]));
+    wrap.appendChild(tableWrap);
+    return wrap;
+  }
+
+  function renderResearchPanel() {
+    var settings = aiSettings(), rs = state.research, hist = researchHistory();
+    var box = el("section", { class: "panel research-panel" }, [
+      el("div", { class: "ai-head" }, [el("h2", {}, ["Recherche IA : 2 valeurs à fort potentiel"])]),
+      el("p", { class: "muted small", style: "margin-top:-4px" }, [
+        "L'IA mène ses propres recherches sur le web (résultats publiés, dividendes, notes d'analystes et de SGI, presse spécialisée), les croise avec l'analyse quantitative du jour et vos documents, puis retient 2 valeurs en citant ses sources. ",
+        "Durée : quelques minutes. Coût indicatif : 0,50 à 2 $ par recherche avec Opus."
+      ])
+    ]);
+    if (state.view.date) {
+      box.appendChild(el("p", { class: "muted small" }, ["La recherche porte sur l'actualité : revenez à la séance du jour pour la lancer."]));
+    } else {
+      box.appendChild(el("div", { class: "ai-actions" }, [
+        el("button", { class: "btn", disabled: rs.running ? "disabled" : null, onclick: runResearch }, [
+          rs.running ? "Recherche en cours…" : (settings.apiKey ? "🔎 Lancer la recherche" : "Configurer la clé API pour lancer la recherche")
+        ]),
+        settings.apiKey ? el("span", { class: "muted small" }, ["Profil, portefeuille et documents cochés sont pris en compte."]) : null
+      ]));
+    }
+    if (rs.running) {
+      box.appendChild(el("p", { class: "muted small ai-status" }, [el("span", { id: "research-status" }, [rs.status]), " · ", el("span", { id: "research-elapsed" }, ["0 s"])]));
+      if (rs.queries.length) box.appendChild(el("ul", { class: "research-queries small muted" }, rs.queries.slice(-8).map(function (q) { return el("li", {}, [q]); })));
+    }
+    if (rs.error) box.appendChild(el("p", { class: "small concentration-warning" }, ["⚠ " + rs.error]));
+    var shown = hist.filter(function (r) { return r.id === rs.openId; })[0] || (!rs.running && hist[0]);
+    if (shown && !rs.running) {
+      if (shown !== hist[0]) box.appendChild(el("p", { class: "muted small" }, ["Rapport du " + new Date(shown.at).toLocaleDateString("fr-FR") + " ", el("button", { class: "link-btn small", onclick: function () { state.research.openId = hist[0].id; render(); } }, ["revenir au plus récent"])]));
+      box.appendChild(renderResearchReport(shown));
+    }
+    var h = renderResearchHistory(hist);
+    if (h) box.appendChild(h);
+    if (shown) box.appendChild(el("p", { class: "disclaimer" }, ["Pistes d'investissement générées par une IA à partir de sources web et des données de l'outil : vérifiez les sources, elles peuvent contenir des erreurs. Ce n'est pas un conseil en investissement."]));
     return box;
   }
 
@@ -1641,8 +2189,8 @@
     root.appendChild(renderHeader());
     var main = el("main", { class: "layout" });
     if (state.view.date) root.appendChild(renderArchiveBanner());
-    var left = el("div", { class: "col-main" }, [renderSynthese(), renderAiPanel(), renderDocuments(), renderMethodology(), renderMarketTable()]);
-    var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderPortfolio(), renderConcentration(), renderWatchlist(), renderArchives()]);
+    var left = el("div", { class: "col-main" }, [renderSynthese(), renderPortfolio(), renderAiPanel(), renderResearchPanel(), renderDocuments(), renderMethodology(), renderMarketTable()]);
+    var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderConcentration(), renderWatchlist(), renderArchives()]);
     main.appendChild(left);
     main.appendChild(right);
     root.appendChild(main);
@@ -1656,15 +2204,6 @@
 
   // -------------------------------------------------------- state mutators
   function setRiskProfile(key) { state.user.riskProfile = key; loadCachedAi(); render(); saveUserState(); }
-  function addPosition(pos) {
-    state.user.portfolio = state.user.portfolio || [];
-    state.user.portfolio.push(pos);
-    render(); saveUserState();
-  }
-  function removePosition(pos) {
-    state.user.portfolio = (state.user.portfolio || []).filter(function (p) { return p !== pos; });
-    render(); saveUserState();
-  }
   function addWatch(symb) {
     if (!symb) return;
     state.user.watchlist = state.user.watchlist || [];
@@ -1720,6 +2259,15 @@
     if (!state.user.riskProfile) state.user.riskProfile = "equilibre";
     if (!state.user.portfolio) state.user.portfolio = [];
     if (!state.user.watchlist) state.user.watchlist = [];
+    if (!state.user.transactions) {
+      // Migration : les positions saisies avant le registre d'opérations
+      // deviennent des achats à leur date d'achat.
+      state.user.transactions = state.user.portfolio.map(function (p, i) {
+        return { id: "m" + i, seq: i, type: "achat", symbole: p.symbole, date: p.date_achat || todayIso(), quantite: p.quantite, prix: p.prix_achat, frais: 0 };
+      });
+      if (state.user.transactions.length) saveUserState();
+    }
+    syncPortfolio();
     loadCachedAi();
     render();
     loadDocs();

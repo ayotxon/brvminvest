@@ -154,6 +154,55 @@ la veille (pour suivre ce qui se confirme ou s'invalide). L'IA ne voit pas
 l'actualité ni les résultats des sociétés : c'est un commentaire éclairé,
 pas un conseil en investissement.
 
+## Mon portefeuille : registre d'opérations
+
+Le portefeuille se tient par **opérations** : achat, vente, dividende, avec
+la date, la quantité, le prix unitaire et les frais (courtage SGI, etc.).
+Le dashboard en déduit automatiquement :
+
+- les positions ouvertes et leur **PRU** (prix de revient unitaire, méthode
+  du prix moyen pondéré, frais d'achat inclus) ;
+- la **plus/moins-value latente** (au dernier cours) et **réalisée** (à
+  chaque vente : produit net des frais − PRU × quantité vendue) ;
+- les **dividendes encaissés** et le **résultat total** rapporté aux
+  montants investis.
+
+Une vente supérieure à la quantité détenue à sa date est refusée. En
+consultant une séance archivée, seules les opérations antérieures sont
+prises en compte (valorisation du portefeuille tel qu'il était). Le bouton
+« Vendre » d'une ligne pré-remplit le formulaire. Les montants sont
+indiqués avant impôts.
+
+Les données restent dans le navigateur : **Sauvegarder mes données**
+télécharge un fichier JSON (opérations, liste de suivi, recherches IA) que
+**Restaurer une sauvegarde** permet de recharger, par exemple sur un autre
+appareil. Les opérations s'exportent aussi en CSV pour Excel. Les positions
+saisies avec l'ancienne version sont converties automatiquement en achats.
+
+## Recherche IA : 2 valeurs à fort potentiel
+
+Le bouton **Lancer la recherche** demande à l'IA (avec ta clé API) de mener
+ses propres recherches sur le web — outils `web_search` et `web_fetch` de
+l'API Claude : résultats publiés, dividendes et dates de détachement, notes
+d'analystes et de SGI, presse spécialisée, actualité de l'UEMOA. Elle les
+croise avec le dossier quantitatif du jour, ton profil, ton portefeuille et
+tes documents, compare 5 à 8 candidates, puis retient **exactement 2
+valeurs**, avec thèse, chiffres sourcés et datés, catalyseurs, consensus des
+sources, risques, conditions d'entrée et d'invalidation, et niveau de
+conviction. Les valeurs écartées et toutes les sources consultées sont
+listées.
+
+- Durée : quelques minutes. Coût indicatif : 0,50 à 2 $ par recherche avec
+  Opus (recherches web + lecture des pages).
+- La recherche web doit être autorisée pour ton organisation dans la console
+  Anthropic (paramètres de confidentialité / web search) ; sinon l'erreur
+  s'affiche.
+- **Suivi des performances** : chaque recommandation est conservée avec le
+  cours du jour ; le tableau « Suivi des recommandations passées » affiche
+  ensuite sa performance réelle, comparée à la moyenne du marché sur la même
+  période. C'est le meilleur moyen de juger, dans la durée, si ces
+  recommandations méritent ta confiance.
+
 ## Mes documents d'analyse
 
 Le panneau **Mes documents d'analyse** accepte tes propres sources : PDF

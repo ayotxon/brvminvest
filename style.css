@@ -256,6 +256,30 @@ a { color: var(--accent); }
 }
 .sector-chip::first-letter { text-transform: uppercase; }
 
+/* Portefeuille (registre d'opérations) */
+.portfolio-panel .portfolio-summary { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.portfolio-panel .stat-value { font-size: 1rem; }
+.tx-form { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; }
+.tx-form .add-form { margin-top: 8px; }
+.tx-title { margin-bottom: 2px; font-weight: 600; }
+.tx-history { margin-top: 12px; }
+.tx-history .table-scroll { margin-top: 8px; }
+.portfolio-io { margin-top: 12px; }
+.portfolio-io label.btn { display: inline-flex; align-items: center; }
+
+/* Recherche IA */
+.winners { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 6px 0 12px; }
+.winner-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--surface-card-hover); display: flex; flex-direction: column; gap: 6px; }
+.winner-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.winner-symb { font-size: 1.1rem; font-weight: 600; color: var(--accent); }
+.winner-name { font-weight: 600; }
+.winner-these { margin: 0; color: var(--ink-secondary); }
+.research-queries { margin: 4px 0 8px; padding-left: 18px; }
+.research-sources { margin-top: 10px; }
+.research-sources ul { padding-left: 18px; max-height: 260px; overflow: auto; }
+.research-sources a { overflow-wrap: anywhere; }
+.research-history { margin-top: 16px; border-top: 1px solid var(--border-soft); padding-top: 12px; }
+
 /* Documents d'analyse */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .drop-zone {
