@@ -256,6 +256,31 @@ a { color: var(--accent); }
 }
 .sector-chip::first-letter { text-transform: uppercase; }
 
+/* Documents d'analyse */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 18px; text-align: center;
+  background: var(--surface-card-hover); transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone p { margin: 2px 0; }
+.drop-zone.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop-zone label.link-btn { font-size: inherit; }
+.asr-row { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; flex-wrap: wrap; }
+.asr-row .input { flex: 1 1 220px; }
+.doc-card { border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px; margin-top: 10px; }
+.doc-card.doc-off { opacity: 0.75; }
+.doc-head { display: flex; gap: 10px; align-items: flex-start; }
+.doc-title { min-width: 0; overflow-wrap: anywhere; }
+.doc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+.doc-resume { color: var(--ink-secondary); margin: 8px 0 0; }
+.doc-details { color: var(--ink-secondary); margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.doc-details ul { margin: 4px 0; padding-left: 18px; }
+.doc-details p { margin: 0; }
+.doc-transcript { white-space: pre-wrap; max-height: 260px; overflow: auto; margin-top: 6px; }
+.doc-actions { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.doc-delete { color: var(--down); }
+.linked-docs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 4px 10px; }
+
 /* Méthodologie et facteurs */
 .method-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .method-reliability { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; color: var(--ink); }

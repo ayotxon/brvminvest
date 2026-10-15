@@ -85,6 +85,9 @@ def build_contexts(archive_dir):
     for pos, entry in enumerate(index):
         snap = load(entry["date"])
         if snap.get("contexteIA"):
+            if snap["contexteIA"].get("systeme") != ai_analysis.SYSTEM_PROMPT:
+                snap["contexteIA"]["systeme"] = ai_analysis.SYSTEM_PROMPT
+                archives.write_snapshot(archive_dir, snap)
             continue
         for st in snap.get("stocks", []):
             if st.get("secteur") == "Non classé" and st["symbole"] in sectors:

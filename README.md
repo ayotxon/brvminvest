@@ -154,6 +154,34 @@ la veille (pour suivre ce qui se confirme ou s'invalide). L'IA ne voit pas
 l'actualité ni les résultats des sociétés : c'est un commentaire éclairé,
 pas un conseil en investissement.
 
+## Mes documents d'analyse
+
+Le panneau **Mes documents d'analyse** accepte tes propres sources : PDF
+(rapports annuels, notes de SGI, bulletins officiels de la cote ; ≤ 22 Mo),
+Word `.docx`, images (captures d'écran, graphiques), texte/CSV, et
+enregistrements **audio ou vidéo** (conférences de résultats, interviews,
+podcasts).
+
+- Chaque document est lu **une fois** par l'IA (avec ta clé API), qui en
+  tire une fiche structurée : titre, date, valeurs BRVM concernées, résumé,
+  chiffres clés, dividende, perspectives, risques, impact estimé par valeur
+  et fiabilité de la source.
+- Ce sont ces fiches (compactes) qui sont jointes à **Mon analyse
+  personnalisée** — case « Utiliser dans mes analyses » pour choisir
+  lesquelles. Elles apparaissent aussi dans le détail de chaque valeur
+  concernée du tableau du marché.
+- L'audio et la vidéo sont **transcrits dans le navigateur** (Whisper,
+  transformers.js) : le son n'est envoyé nulle part, seule la transcription
+  est transmise à l'IA. Le modèle de transcription est téléchargé une seule
+  fois (~80 Mo en qualité standard, ~250 Mo en haute qualité, recommandée
+  pour les chiffres et les noms propres). Une heure d'audio peut prendre de
+  longues minutes sur un ordinateur sans carte graphique récente.
+- Les fichiers et leurs fiches restent dans le navigateur (IndexedDB) : ils
+  ne sont pas synchronisés entre appareils et ne sont pas utilisés par
+  l'analyse automatique du jour.
+- Coût indicatif de lecture : quelques centimes pour une note de quelques
+  pages, ~0,50 à 1 $ pour un rapport annuel de 100 pages avec Opus.
+
 ## Fichiers du projet
 
 - `index.html` — le dashboard complet (HTML + CSS + JS inlinés), c'est le

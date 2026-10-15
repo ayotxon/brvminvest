@@ -569,6 +569,7 @@
           el("div", {}, [el("div", { class: "muted small" }, ["Force relative vs BRVM Composite"]), el("div", {}, [ind.force_relative_pct != null ? fmtPct(ind.force_relative_pct) : "n/d"])])
         ]),
         ind.facteurs ? renderFactors(ind.facteurs, reco) : null,
+        renderLinkedDocs(s.symbole),
         el("div", { class: "alignment-row" }, [
           el("span", { class: "badge tone-" + align.tone }, [align.label]),
           el("span", { class: "muted small" }, [" " + align.detail])
@@ -844,60 +845,24 @@
       render();
       return;
     }
-    var model = AI_MODELS.filter(function (x) { return x.id === settings.model; })[0] || AI_MODELS[0];
     var forKey = aiCacheKey();
     state.ai = { running: true, text: "", status: "L'IA analyse la séance…", error: null, meta: null, settingsOpen: false, tab: "perso" };
     render();
 
-    Promise.resolve().then(function () {
-      var body = {
-        model: model.id,
-        max_tokens: 16000,
-        stream: true,
-        system: ctx.systeme,
-        output_config: { effort: "high" },
-        messages: [{ role: "user", content: ctx.marche + "\n" + buildPersonalSection() + "\n\nRédige l'analyse de cette séance pour cet investisseur." }]
-      };
-      var headers = {
-        "content-type": "application/json",
-        "x-api-key": settings.apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      };
-      if (model.fallbacks) {
-        // En cas de refus par les filtres de sécurité, l'API relance
-        // automatiquement la requête sur le modèle de repli recommandé.
-        body.fallbacks = "default";
-        headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
+    var content = ctx.marche + "\n" + buildPersonalSection() + buildDocumentsSection() +
+      "\n\nRédige l'analyse de cette séance pour cet investisseur.";
+    callClaude({
+      system: ctx.systeme,
+      content: content,
+      effort: "high",
+      onText: function (t) {
+        state.ai.text += t;
+        setAiStatus("Rédaction en cours…");
+        scheduleAiOutputUpdate();
       }
-      return fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: headers, body: JSON.stringify(body) });
-    }).then(function (resp) {
-      if (!resp.ok) {
-        return resp.text().then(function (t) {
-          var msg = "";
-          try { msg = JSON.parse(t).error.message; } catch (e) { msg = t.slice(0, 200); }
-          if (resp.status === 401) msg = "Clé API refusée (401). Vérifiez-la dans les paramètres.";
-          else if (resp.status === 429) msg = "Limite de débit atteinte (429), réessayez dans un instant. " + msg;
-          else if (resp.status === 529 || resp.status >= 500) msg = "Service momentanément surchargé (" + resp.status + "), réessayez dans un instant.";
-          throw new Error(msg);
-        });
-      }
-      return readSse(resp.body, function (ev) {
-        if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
-          state.ai.text += ev.delta.text;
-          setAiStatus("Rédaction en cours…");
-          scheduleAiOutputUpdate();
-        } else if (ev.type === "message_delta" && ev.delta && ev.delta.stop_reason) {
-          state.ai.stopReason = ev.delta.stop_reason;
-        } else if (ev.type === "error") {
-          throw new Error((ev.error && ev.error.message) || "Erreur pendant la génération.");
-        }
-      });
-    }).then(function () {
-      if (state.ai.stopReason === "refusal") throw new Error("Le modèle a refusé de traiter cette demande.");
-      if (!state.ai.text) throw new Error("Réponse vide.");
-      if (state.ai.stopReason === "max_tokens") state.ai.text += "\n\n*(Analyse tronquée : limite de longueur atteinte.)*";
-      var meta = { model: model.id, at: new Date().toISOString(), date: state.market.asOfDate, profile: state.user.riskProfile };
+    }).then(function (res) {
+      if (res.stopReason === "max_tokens") state.ai.text += "\n\n*(Analyse tronquée : limite de longueur atteinte.)*";
+      var meta = { model: res.model, at: new Date().toISOString(), date: state.market.asOfDate, profile: state.user.riskProfile, documents: includedDocuments().length };
       if (aiCacheKey() === forKey) {
         storeCachedAi(state.ai.text, meta);
         state.ai.meta = meta;
@@ -909,8 +874,69 @@
       state.ai.running = false;
       state.ai.status = "";
       state.ai.error = err && err.message ? err.message : String(err);
-      if (err instanceof TypeError) state.ai.error = "Impossible de joindre l'API Claude (réseau ou blocage du navigateur). " + state.ai.error;
       render();
+    });
+  }
+
+  // Appel à l'API Claude en streaming depuis le navigateur, avec la clé et le
+  // modèle choisis par l'utilisateur. content : texte ou liste de blocs
+  // (document PDF, image, texte). format : schéma JSON optionnel (sortie
+  // structurée). Résout { text, stopReason, model }.
+  function callClaude(opts) {
+    var settings = aiSettings();
+    if (!settings.apiKey) return Promise.reject(new Error("Configurez d'abord votre clé API (panneau Analyse IA)."));
+    var model = AI_MODELS.filter(function (x) { return x.id === settings.model; })[0] || AI_MODELS[0];
+    var body = {
+      model: model.id,
+      max_tokens: opts.maxTokens || 16000,
+      stream: true,
+      system: opts.system,
+      output_config: { effort: opts.effort || "high" },
+      messages: [{ role: "user", content: opts.content }]
+    };
+    if (opts.format) body.output_config.format = opts.format;
+    var headers = {
+      "content-type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    };
+    if (model.fallbacks) {
+      // En cas de refus par les filtres de sécurité, l'API relance
+      // automatiquement la requête sur le modèle de repli recommandé.
+      body.fallbacks = "default";
+      headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
+    }
+    var text = "", stopReason = null;
+    return fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: headers, body: JSON.stringify(body) }).then(function (resp) {
+      if (!resp.ok) {
+        return resp.text().then(function (t) {
+          var msg = "";
+          try { msg = JSON.parse(t).error.message; } catch (e) { msg = t.slice(0, 200); }
+          if (resp.status === 401) msg = "Clé API refusée (401). Vérifiez-la dans les paramètres.";
+          else if (resp.status === 413) msg = "Document trop volumineux pour l'API (413). " + msg;
+          else if (resp.status === 429) msg = "Limite de débit atteinte (429), réessayez dans un instant. " + msg;
+          else if (resp.status === 529 || resp.status >= 500) msg = "Service momentanément surchargé (" + resp.status + "), réessayez dans un instant.";
+          throw new Error(msg);
+        });
+      }
+      return readSse(resp.body, function (ev) {
+        if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
+          text += ev.delta.text;
+          if (opts.onText) opts.onText(ev.delta.text);
+        } else if (ev.type === "message_delta" && ev.delta && ev.delta.stop_reason) {
+          stopReason = ev.delta.stop_reason;
+        } else if (ev.type === "error") {
+          throw new Error((ev.error && ev.error.message) || "Erreur pendant la génération.");
+        }
+      });
+    }).then(function () {
+      if (stopReason === "refusal") throw new Error("Le modèle a refusé de traiter cette demande.");
+      if (!text) throw new Error("Réponse vide.");
+      return { text: text, stopReason: stopReason, model: model.id };
+    }, function (err) {
+      if (err instanceof TypeError) throw new Error("Impossible de joindre l'API Claude (réseau ou blocage du navigateur). " + err.message);
+      throw err;
     });
   }
 
@@ -1018,6 +1044,10 @@
         saveAiSettings({ apiKey: keyInput.value.trim(), model: modelSel.value });
         state.ai.settingsOpen = false;
         render();
+        // Documents déposés avant la configuration de la clé : on les traite.
+        (state.docs.list || []).filter(function (d) { return d.status === "a_analyser"; }).reduce(function (pr, d) {
+          return pr.then(function () { return processDocument(d); });
+        }, Promise.resolve());
       }
     }, [
       el("p", { class: "muted small" }, [
@@ -1089,7 +1119,8 @@
       if (!ai.running && ai.meta) {
         box.appendChild(el("div", { class: "ai-foot" }, [
           el("span", { class: "muted small" }, [
-            "Générée le " + new Date(ai.meta.at).toLocaleString("fr-FR") + " par " + aiModelLabel(ai.meta.model) + " (profil " + labelForProfile(ai.meta.profile).toLowerCase() + "). "
+            "Générée le " + new Date(ai.meta.at).toLocaleString("fr-FR") + " par " + aiModelLabel(ai.meta.model) + " (profil " + labelForProfile(ai.meta.profile).toLowerCase() +
+            (ai.meta.documents ? ", " + ai.meta.documents + " document(s) pris en compte" : "") + "). "
           ]),
           el("button", { class: "link-btn small", onclick: function () {
             downloadBlob("analyse-ia-perso-brvm-" + ai.meta.date + ".md", "text/markdown;charset=utf-8", "# Analyse IA personnalisée — " + (state.market.asOfLabel || ai.meta.date) + "\n\n" + ai.text);
@@ -1128,6 +1159,448 @@
     return box;
   }
 
+  // ---------------------------------------------------- documents d'analyse
+  // L'utilisateur dépose ses propres sources (rapports annuels, notes de
+  // recherche, communiqués, captures, enregistrements audio...). Chaque
+  // document est conservé dans le navigateur (IndexedDB) et lu UNE fois par
+  // l'IA, qui en tire une fiche structurée (chiffres clés, valeurs
+  // concernées, impact) ; ce sont ces fiches, compactes, qui sont ensuite
+  // jointes aux analyses personnalisées. Les fichiers audio/vidéo sont
+  // transcrits localement dans le navigateur (Whisper), sans envoi du son.
+  var DOCS_DB = "brvm-conseil-docs", DOCS_STORE = "documents";
+  var PDF_MAX_BYTES = 22 * 1024 * 1024;     // ~32 Mo par requête une fois encodé en base64
+  var IMAGE_MAX_SIDE = 2000;
+  var TEXT_MAX_CHARS = 600000;              // au-delà, découper le document
+  var TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0";
+  var MAMMOTH_URL = "https://cdn.jsdelivr.net/npm/mammoth@1.12.3/mammoth.browser.min.js";
+  var WHISPER_MODELS = {
+    standard: { id: "onnx-community/whisper-base", label: "Standard (rapide, ~80 Mo à télécharger une fois)" },
+    haute: { id: "onnx-community/whisper-small", label: "Haute (plus lente, ~250 Mo à télécharger une fois)" }
+  };
+
+  state.docs = { list: [], progress: {}, openId: null, dragOver: false, loaded: false };
+
+  function docKind(file) {
+    var t = (file.type || "").toLowerCase(), n = file.name.toLowerCase();
+    if (t === "application/pdf" || /\.pdf$/.test(n)) return "pdf";
+    if (/^image\/(png|jpe?g|gif|webp)$/.test(t) || /\.(png|jpe?g|gif|webp)$/.test(n)) return "image";
+    if (/^(audio|video)\//.test(t) || /\.(mp3|m4a|wav|ogg|oga|opus|aac|flac|webm|mp4|mov)$/.test(n)) return "audio";
+    if (/\.docx$/.test(n) || t === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "word";
+    if (/^text\//.test(t) || /\.(txt|md|csv|json|tsv)$/.test(n)) return "texte";
+    return null;
+  }
+  var KIND_LABEL = { pdf: "PDF", image: "Image", audio: "Audio", word: "Word", texte: "Texte" };
+
+  function openDocsDb() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error("Stockage local indisponible dans ce navigateur.")); return; }
+      var req = indexedDB.open(DOCS_DB, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(DOCS_STORE, { keyPath: "id" }); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function docsTx(mode, fn) {
+    return openDocsDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DOCS_STORE, mode);
+        var out = fn(tx.objectStore(DOCS_STORE));
+        tx.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function saveDoc(doc) { return docsTx("readwrite", function (st) { st.put(doc); }); }
+  function deleteDocFromDb(id) { return docsTx("readwrite", function (st) { st.delete(id); }); }
+
+  function loadDocs() {
+    return docsTx("readonly", function (st) { return st.getAll(); }).then(function (all) {
+      state.docs.list = (all || []).sort(function (a, b) { return (b.addedAt || "").localeCompare(a.addedAt || ""); });
+      // Un traitement interrompu (page fermée) est remis à « à analyser ».
+      state.docs.list.forEach(function (d) { if (d.status === "en_cours") d.status = "a_analyser"; });
+      state.docs.loaded = true;
+      render();
+    }).catch(function (e) {
+      state.docs.loaded = true;
+      state.docs.error = e.message;
+      render();
+    });
+  }
+
+  function addFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    var added = [];
+    files.forEach(function (file) {
+      var kind = docKind(file);
+      var doc = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        name: file.name, mime: file.type, size: file.size, kind: kind,
+        addedAt: new Date().toISOString(), blob: file, include: true,
+        status: kind ? "a_analyser" : "erreur",
+        error: kind ? null : "Format non pris en charge (PDF, Word .docx, images, texte/CSV, audio ou vidéo).",
+        fiche: null, transcript: null
+      };
+      state.docs.list.unshift(doc);
+      added.push(doc);
+    });
+    render();
+    Promise.all(added.map(saveDoc)).then(function () {
+      if (!aiSettings().apiKey) return;
+      // Traitement séquentiel : un document à la fois (transcription et API).
+      added.filter(function (d) { return d.status === "a_analyser"; }).reduce(function (p, d) {
+        return p.then(function () { return processDocument(d); });
+      }, Promise.resolve());
+    }).catch(function (e) { state.docs.error = "Enregistrement local impossible : " + e.message; render(); });
+  }
+
+  function setDocProgress(doc, text) {
+    state.docs.progress[doc.id] = text;
+    var node = document.getElementById("doc-progress-" + doc.id);
+    if (node) node.textContent = text; else render();
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(",")[1]); };
+      r.onerror = function () { reject(r.error); };
+      r.readAsDataURL(blob);
+    });
+  }
+
+  // Les images trop grandes sont réduites (JPEG) avant envoi : au-delà, l'API
+  // les redimensionne de toute façon et la requête serait inutilement lourde.
+  function prepareImage(blob) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.width, img.height));
+        var okType = /^image\/(png|jpeg|gif|webp)$/.test(blob.type);
+        if (scale === 1 && okType && blob.size < 4.5 * 1024 * 1024) {
+          blobToBase64(blob).then(function (b64) { resolve({ media_type: blob.type, data: b64 }); }, reject);
+          return;
+        }
+        var c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve({ media_type: "image/jpeg", data: c.toDataURL("image/jpeg", 0.88).split(",")[1] });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Image illisible.")); };
+      img.src = url;
+    });
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src; s.onload = resolve;
+      s.onerror = function () { reject(new Error("Chargement impossible : " + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function extractWordText(blob) {
+    var ready = window.mammoth ? Promise.resolve() : loadScript(MAMMOTH_URL);
+    return ready.then(function () { return blob.arrayBuffer(); })
+      .then(function (buf) { return window.mammoth.extractRawText({ arrayBuffer: buf }); })
+      .then(function (r) { return r.value; });
+  }
+
+  // Décodage audio (y compris piste son d'une vidéo) en mono 16 kHz, le
+  // format attendu par Whisper.
+  function decodeAudio16k(blob) {
+    return blob.arrayBuffer().then(function (buf) {
+      var Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      var ctx = new Ctx(1, 1, 16000);
+      return ctx.decodeAudioData(buf);
+    }).then(function (audio) {
+      if (audio.numberOfChannels === 1) return audio.getChannelData(0);
+      var a = audio.getChannelData(0), b = audio.getChannelData(1), out = new Float32Array(a.length);
+      for (var i = 0; i < a.length; i++) out[i] = (a[i] + b[i]) / 2;
+      return out;
+    }, function () { throw new Error("Impossible de décoder ce fichier audio/vidéo dans le navigateur."); });
+  }
+
+  var asrPipelines = {};
+  function transcribe(doc, onProgress) {
+    var quality = readJsonStorage(AI_SETTINGS_KEY, {}).asrQuality || (navigator.gpu ? "haute" : "standard");
+    var model = WHISPER_MODELS[quality] || WHISPER_MODELS.standard;
+    var device = navigator.gpu ? "webgpu" : "wasm";
+    var files = {};
+    if (!asrPipelines[model.id]) {
+      asrPipelines[model.id] = import(TRANSFORMERS_URL).then(function (tf) {
+        return tf.pipeline("automatic-speech-recognition", model.id, {
+          device: device,
+          dtype: device === "webgpu" ? "fp32" : "q8",
+          progress_callback: function (p) {
+            if (p.status === "progress" && p.total) {
+              files[p.file] = [p.loaded, p.total];
+              var loaded = 0, total = 0;
+              Object.keys(files).forEach(function (k) { loaded += files[k][0]; total += files[k][1]; });
+              onProgress("Téléchargement du modèle de transcription (une seule fois) : " + Math.round(loaded / total * 100) + " %");
+            }
+          }
+        });
+      });
+      asrPipelines[model.id].catch(function () { delete asrPipelines[model.id]; });
+    }
+    var audioP = decodeAudio16k(doc.blob);
+    return Promise.all([asrPipelines[model.id], audioP]).then(function (r) {
+      var asr = r[0], audio = r[1];
+      var minutes = audio.length / 16000 / 60;
+      var started = Date.now();
+      onProgress("Transcription locale de " + (minutes < 1 ? Math.round(minutes * 60) + " s" : minutes.toFixed(1).replace(".", ",") + " min") +
+        " d'audio en cours (" + (device === "webgpu" ? "carte graphique" : "processeur") + ")… cela peut prendre plusieurs minutes.");
+      var timer = setInterval(function () {
+        onProgress("Transcription locale en cours… " + Math.round((Date.now() - started) / 1000) + " s écoulées pour " +
+          minutes.toFixed(1).replace(".", ",") + " min d'audio.");
+      }, 5000);
+      return asr(audio, { language: "french", task: "transcribe", chunk_length_s: 30, stride_length_s: 5 })
+        .then(function (out) { clearInterval(timer); return (out && out.text || "").trim(); },
+              function (e) { clearInterval(timer); throw e; });
+    });
+  }
+
+  var FICHE_SCHEMA = {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: {
+        titre: { type: "string" },
+        type_document: { type: "string" },
+        date_document: { type: "string" },
+        source: { type: "string" },
+        valeurs: { type: "array", items: { type: "string" } },
+        resume: { type: "string" },
+        chiffres_cles: { type: "array", items: { type: "object", properties: {
+          libelle: { type: "string" }, valeur: { type: "string" }, periode: { type: "string" }
+        }, required: ["libelle", "valeur", "periode"], additionalProperties: false } },
+        dividende: { type: "string" },
+        perspectives: { type: "string" },
+        risques: { type: "array", items: { type: "string" } },
+        impact: { type: "array", items: { type: "object", properties: {
+          symbole: { type: "string" },
+          sens: { type: "string", enum: ["positif", "negatif", "neutre", "incertain"] },
+          justification: { type: "string" }
+        }, required: ["symbole", "sens", "justification"], additionalProperties: false } },
+        fiabilite: { type: "string" }
+      },
+      required: ["titre", "type_document", "date_document", "source", "valeurs", "resume", "chiffres_cles", "dividende", "perspectives", "risques", "impact", "fiabilite"],
+      additionalProperties: false
+    }
+  };
+
+  function ficheSystemPrompt() {
+    var list = (state.live.stocks || []).map(function (s) { return s.symbole + " — " + s.nom + " (" + s.secteur + ", " + s.pays + ")"; }).join("\n");
+    return [
+      "Tu es analyste financier spécialisé sur la BRVM (Bourse Régionale des Valeurs Mobilières, UEMOA). Un investisseur te transmet un document (rapport, note de recherche, communiqué, capture d'écran, transcription d'un enregistrement audio...). Produis une fiche d'analyse factuelle et fidèle, en français, qui servira ensuite de source à des analyses de marché.",
+      "",
+      "Règles :",
+      "- N'invente rien : uniquement ce que contient le document. Champ texte sans information : chaîne vide ; liste sans information : liste vide.",
+      "- valeurs : symboles BRVM concernés, choisis UNIQUEMENT dans la liste ci-dessous ; « MARCHE » si le document porte sur le marché dans son ensemble ou l'économie de la zone.",
+      "- date_document : AAAA-MM-JJ si elle figure dans le document (sinon AAAA-MM ou AAAA, sinon chaîne vide).",
+      "- chiffres_cles : 5 à 15 chiffres les plus utiles à un investisseur (chiffre d'affaires, résultat net, marges, dividende par action, endettement, objectifs de cours, volumes...), avec la période concernée.",
+      "- impact : pour chaque valeur concernée, l'effet probable de ce document sur l'appréciation de la valeur, justifié en une phrase.",
+      "- fiabilite : nature de la source (document officiel de l'émetteur, opinion d'analyste, article de presse, rumeur, transcription automatique pouvant contenir des erreurs...) et limites.",
+      "- resume : 5 à 10 phrases, denses et chiffrées.",
+      "",
+      "Valeurs cotées à la BRVM :",
+      list
+    ].join("\n");
+  }
+
+  function documentContent(doc, onProgress) {
+    var intro = "Document « " + doc.name + " » (" + KIND_LABEL[doc.kind] + ", ajouté le " + doc.addedAt.slice(0, 10) + ").";
+    if (doc.kind === "pdf") {
+      if (doc.size > PDF_MAX_BYTES) return Promise.reject(new Error("PDF trop volumineux (" + Math.round(doc.size / 1048576) + " Mo, maximum ~22 Mo) : découpez-le en plusieurs fichiers."));
+      onProgress("Lecture du PDF…");
+      return blobToBase64(doc.blob).then(function (b64) {
+        return [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }, { type: "text", text: intro + " Rédige sa fiche." }];
+      });
+    }
+    if (doc.kind === "image") {
+      onProgress("Préparation de l'image…");
+      return prepareImage(doc.blob).then(function (img) {
+        return [{ type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } }, { type: "text", text: intro + " Rédige sa fiche." }];
+      });
+    }
+    var textP;
+    if (doc.kind === "audio") {
+      textP = doc.transcript ? Promise.resolve(doc.transcript) : transcribe(doc, onProgress).then(function (t) {
+        if (!t) throw new Error("Aucune parole détectée dans l'enregistrement.");
+        doc.transcript = t;
+        return saveDoc(doc).then(function () { return t; });
+      });
+      intro += " Transcription automatique (peut contenir des erreurs de reconnaissance, notamment sur les noms propres et les chiffres) :";
+    } else if (doc.kind === "word") {
+      onProgress("Extraction du texte Word…");
+      textP = extractWordText(doc.blob);
+    } else {
+      textP = doc.blob.text();
+    }
+    return textP.then(function (t) {
+      if (t.length > TEXT_MAX_CHARS) throw new Error("Texte trop long (" + Math.round(t.length / 1000) + " k caractères, maximum " + TEXT_MAX_CHARS / 1000 + " k) : découpez le document.");
+      return intro + "\n\n<document>\n" + t + "\n</document>\n\nRédige sa fiche.";
+    });
+  }
+
+  function processDocument(doc) {
+    if (!aiSettings().apiKey) { state.ai.tab = "perso"; state.ai.settingsOpen = true; render(); return Promise.resolve(); }
+    doc.status = "en_cours"; doc.error = null;
+    setDocProgress(doc, "Préparation…");
+    return documentContent(doc, function (t) { setDocProgress(doc, t); }).then(function (content) {
+      setDocProgress(doc, "L'IA lit le document et rédige sa fiche…");
+      return callClaude({ system: ficheSystemPrompt(), content: content, format: FICHE_SCHEMA, effort: "medium" });
+    }).then(function (res) {
+      doc.fiche = JSON.parse(res.text);
+      doc.ficheModel = res.model;
+      doc.ficheAt = new Date().toISOString();
+      doc.status = "pret";
+    }).catch(function (e) {
+      doc.status = "erreur";
+      doc.error = e && e.message ? e.message : String(e);
+    }).then(function () {
+      delete state.docs.progress[doc.id];
+      return saveDoc(doc).catch(function () {});
+    }).then(render);
+  }
+
+  function removeDoc(doc) {
+    if (!confirm("Supprimer « " + doc.name + " » et sa fiche ?")) return;
+    state.docs.list = state.docs.list.filter(function (d) { return d !== doc; });
+    deleteDocFromDb(doc.id).then(render, render);
+  }
+
+  function includedDocuments() {
+    return (state.docs.list || []).filter(function (d) { return d.include && d.status === "pret" && d.fiche; });
+  }
+
+  function ficheAsText(doc) {
+    var f = doc.fiche;
+    var out = ["### « " + (f.titre || doc.name) + " » — " + (f.type_document || KIND_LABEL[doc.kind]) +
+      (f.date_document ? ", daté du " + f.date_document : ", date inconnue") + (f.source ? ", source : " + f.source : "")];
+    out.push("Valeurs concernées : " + (f.valeurs.length ? f.valeurs.join(", ") : "—") + ". Fiabilité : " + (f.fiabilite || "—"));
+    out.push("Résumé : " + f.resume);
+    if (f.chiffres_cles.length) out.push("Chiffres clés : " + f.chiffres_cles.map(function (c) { return c.libelle + " = " + c.valeur + (c.periode ? " (" + c.periode + ")" : ""); }).join(" ; "));
+    if (f.dividende) out.push("Dividende : " + f.dividende);
+    if (f.perspectives) out.push("Perspectives : " + f.perspectives);
+    if (f.risques.length) out.push("Risques : " + f.risques.join(" ; "));
+    if (f.impact.length) out.push("Impact estimé : " + f.impact.map(function (i) { return i.symbole + " " + i.sens + " (" + i.justification + ")"; }).join(" ; "));
+    return out.join("\n");
+  }
+
+  function buildDocumentsSection() {
+    var docs = includedDocuments();
+    if (!docs.length) return "";
+    return "\n\n## Documents fournis par l'investisseur (fiches de lecture)\n" +
+      "Ces fiches résument des sources externes transmises par l'investisseur. Utilise-les comme éclairage fondamental : cite-les (titre, date), tiens compte de leur ancienneté et de leur fiabilité, et signale toute contradiction avec les données de marché du dossier.\n\n" +
+      docs.map(ficheAsText).join("\n\n");
+  }
+
+  function docsForSymbol(symb) {
+    return includedDocuments().filter(function (d) { return d.fiche.valeurs.indexOf(symb) !== -1; });
+  }
+
+  var IMPACT_TONE = { positif: "good", negatif: "critical", neutre: "neutral", incertain: "warning" };
+  var IMPACT_LABEL = { positif: "positif", negatif: "négatif", neutre: "neutre", incertain: "incertain" };
+
+  function fmtSize(b) { return b >= 1048576 ? fmtNum(b / 1048576, 1) + " Mo" : Math.max(1, Math.round(b / 1024)) + " Ko"; }
+
+  function renderDocCard(doc) {
+    var f = doc.fiche, open = state.docs.openId === doc.id;
+    var statusEl;
+    if (doc.status === "en_cours") statusEl = el("p", { class: "muted small ai-status", id: "doc-progress-" + doc.id }, [state.docs.progress[doc.id] || "Traitement…"]);
+    else if (doc.status === "erreur") statusEl = el("p", { class: "small concentration-warning" }, ["⚠ " + doc.error]);
+    else if (doc.status === "a_analyser") statusEl = el("p", { class: "muted small" }, [aiSettings().apiKey ? "En attente d'analyse." : "À analyser : configurez votre clé API dans le panneau Analyse IA."]);
+
+    var head = el("div", { class: "doc-head" }, [
+      el("span", { class: "badge tone-neutral" }, [KIND_LABEL[doc.kind] || "?"]),
+      el("div", { class: "doc-title" }, [
+        el("b", {}, [f ? f.titre || doc.name : doc.name]),
+        el("div", { class: "muted small" }, [
+          (f && f.titre ? doc.name + " · " : "") + fmtSize(doc.size) + " · ajouté le " + new Date(doc.addedAt).toLocaleDateString("fr-FR") +
+          (f && f.date_document ? " · document du " + f.date_document : "")
+        ])
+      ])
+    ]);
+    var card = el("div", { class: "doc-card" + (doc.include && f ? "" : " doc-off") }, [head]);
+    if (f) {
+      card.appendChild(el("div", { class: "doc-tags" }, f.impact.length ? f.impact.map(function (i) {
+        return el("span", { class: "badge tone-" + (IMPACT_TONE[i.sens] || "neutral"), title: i.justification }, [i.symbole + " · " + IMPACT_LABEL[i.sens]]);
+      }) : f.valeurs.map(function (v) { return el("span", { class: "badge tone-neutral" }, [v]); })));
+      card.appendChild(el("p", { class: "small doc-resume" }, [open ? f.resume : (f.resume.length > 220 ? f.resume.slice(0, 220) + "…" : f.resume)]));
+      if (open) {
+        var details = el("div", { class: "doc-details small" }, [
+          f.chiffres_cles.length ? el("div", {}, [el("b", {}, ["Chiffres clés"]), el("ul", {}, f.chiffres_cles.map(function (c) {
+            return el("li", {}, [c.libelle + " : ", el("b", {}, [c.valeur]), c.periode ? " (" + c.periode + ")" : ""]);
+          }))]) : null,
+          f.dividende ? el("p", {}, [el("b", {}, ["Dividende : "]), f.dividende]) : null,
+          f.perspectives ? el("p", {}, [el("b", {}, ["Perspectives : "]), f.perspectives]) : null,
+          f.risques.length ? el("div", {}, [el("b", {}, ["Risques"]), el("ul", {}, f.risques.map(function (r) { return el("li", {}, [r]); }))]) : null,
+          f.impact.length ? el("div", {}, [el("b", {}, ["Impact estimé"]), el("ul", {}, f.impact.map(function (i) { return el("li", {}, [i.symbole + " (" + IMPACT_LABEL[i.sens] + ") : " + i.justification]); }))]) : null,
+          el("p", { class: "muted" }, ["Fiabilité de la source : " + (f.fiabilite || "—")]),
+          el("p", { class: "muted" }, ["Fiche rédigée le " + new Date(doc.ficheAt).toLocaleString("fr-FR") + " par " + aiModelLabel(doc.ficheModel) + "."]),
+          doc.transcript ? el("details", {}, [el("summary", {}, ["Transcription (" + Math.round(doc.transcript.length / 1000) + " k caractères)"]), el("p", { class: "doc-transcript" }, [doc.transcript])]) : null
+        ]);
+        card.appendChild(details);
+      }
+    }
+    if (statusEl) card.appendChild(statusEl);
+
+    var include = el("input", { type: "checkbox", id: "doc-inc-" + doc.id });
+    include.checked = !!doc.include;
+    include.addEventListener("change", function () { doc.include = include.checked; saveDoc(doc); render(); });
+    card.appendChild(el("div", { class: "doc-actions" }, [
+      f ? el("label", { class: "small ai-check", for: "doc-inc-" + doc.id }, [include, " Utiliser dans mes analyses"]) : null,
+      f ? el("button", { class: "link-btn small", onclick: function () { state.docs.openId = open ? null : doc.id; render(); } }, [open ? "Réduire" : "Voir la fiche"]) : null,
+      doc.kind && doc.status !== "en_cours" ? el("button", { class: "link-btn small", onclick: function () { processDocument(doc); } }, [f ? "Réanalyser" : "Analyser"]) : null,
+      doc.status !== "en_cours" ? el("button", { class: "link-btn small doc-delete", onclick: function () { removeDoc(doc); } }, ["Supprimer"]) : null
+    ]));
+    return card;
+  }
+
+  function renderDocuments() {
+    var docs = state.docs.list || [];
+    var used = includedDocuments().length;
+    var box = el("section", { class: "panel docs-panel" }, [
+      el("div", { class: "ai-head" }, [
+        el("h2", {}, ["Mes documents d'analyse"]),
+        used ? el("span", { class: "muted small" }, [used + " utilisé(s) dans l'analyse personnalisée"]) : null
+      ]),
+      el("p", { class: "muted small", style: "margin-top:-4px" }, [
+        "Ajoutez vos sources (rapports annuels, notes de SGI, communiqués, captures, enregistrements audio ou vidéo de conférences...). ",
+        "L'IA rédige une fiche par document (chiffres clés, valeurs concernées, impact), jointe ensuite à vos analyses personnalisées. ",
+        "Les fichiers restent dans ce navigateur ; ils ne sont envoyés qu'à l'API Claude pour la lecture, et l'audio est transcrit localement."
+      ])
+    ]);
+    var input = el("input", { type: "file", multiple: "multiple", class: "visually-hidden", id: "doc-input",
+      accept: ".pdf,.docx,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.gif,.webp,audio/*,video/*,.mp3,.m4a,.wav,.ogg,.opus,.webm,.mp4,.mov" });
+    input.addEventListener("change", function () { addFiles(input.files); input.value = ""; });
+    var zone = el("div", {
+      class: "drop-zone" + (state.docs.dragOver ? " over" : ""),
+      ondragover: function (ev) { ev.preventDefault(); if (!state.docs.dragOver) { state.docs.dragOver = true; zone.classList.add("over"); } },
+      ondragleave: function () { state.docs.dragOver = false; zone.classList.remove("over"); },
+      ondrop: function (ev) { ev.preventDefault(); state.docs.dragOver = false; addFiles(ev.dataTransfer.files); }
+    }, [
+      el("p", {}, [el("b", {}, ["Déposez vos fichiers ici"]), " ou ", el("label", { for: "doc-input", class: "link-btn" }, ["choisissez-les"])]),
+      el("p", { class: "muted small" }, ["PDF (≤ 22 Mo), Word .docx, images, texte/CSV, audio et vidéo (mp3, m4a, wav, mp4...)"]),
+      input
+    ]);
+    box.appendChild(zone);
+
+    var asrSel = el("select", { class: "input" }, Object.keys(WHISPER_MODELS).map(function (k) { return el("option", { value: k }, [WHISPER_MODELS[k].label]); }));
+    asrSel.value = readJsonStorage(AI_SETTINGS_KEY, {}).asrQuality || (navigator.gpu ? "haute" : "standard");
+    asrSel.addEventListener("change", function () { saveAiSettings({ asrQuality: asrSel.value }); });
+    box.appendChild(el("div", { class: "asr-row small" }, [el("span", { class: "muted" }, ["Transcription audio :"]), asrSel]));
+
+    if (state.docs.error) box.appendChild(el("p", { class: "small concentration-warning" }, ["⚠ " + state.docs.error]));
+    if (!state.docs.loaded) box.appendChild(el("p", { class: "muted small" }, ["Chargement…"]));
+    docs.forEach(function (d) { box.appendChild(renderDocCard(d)); });
+    return box;
+  }
+
   // Les 4 facteurs du score v2, avec le rang de la valeur dans le marché
   // (0 = la moins bien placée, 1 = la mieux placée sur ce critère).
   function renderFactors(f, reco) {
@@ -1152,13 +1625,23 @@
     })));
   }
 
+  function renderLinkedDocs(symb) {
+    var docs = docsForSymbol(symb);
+    if (!docs.length) return null;
+    return el("div", { class: "linked-docs small" }, [el("span", { class: "muted" }, ["Vos documents : "])].concat(docs.map(function (d) {
+      var imp = d.fiche.impact.filter(function (i) { return i.symbole === symb; })[0];
+      return el("span", { class: "badge tone-" + (imp ? IMPACT_TONE[imp.sens] || "neutral" : "neutral"), title: imp ? imp.justification : d.fiche.resume },
+        [(d.fiche.titre || d.name).slice(0, 50) + (imp ? " · " + IMPACT_LABEL[imp.sens] : "")]);
+    })));
+  }
+
   function renderRoot() {
     var root = document.getElementById("root");
     root.innerHTML = "";
     root.appendChild(renderHeader());
     var main = el("main", { class: "layout" });
     if (state.view.date) root.appendChild(renderArchiveBanner());
-    var left = el("div", { class: "col-main" }, [renderSynthese(), renderAiPanel(), renderMethodology(), renderMarketTable()]);
+    var left = el("div", { class: "col-main" }, [renderSynthese(), renderAiPanel(), renderDocuments(), renderMethodology(), renderMarketTable()]);
     var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderPortfolio(), renderConcentration(), renderWatchlist(), renderArchives()]);
     main.appendChild(left);
     main.appendChild(right);
@@ -1239,6 +1722,7 @@
     if (!state.user.watchlist) state.user.watchlist = [];
     loadCachedAi();
     render();
+    loadDocs();
   }
 
   if (document.readyState === "loading") {
