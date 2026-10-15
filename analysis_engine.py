@@ -343,6 +343,293 @@ def recommend_for_profile(profile_key, variation_pct, ind):
     return {"signal": signal, "score": round(score, 2), "raison": raison}
 
 
+def recommend_all(history_points, variation_pct, ind):
+    """Moteur v1 (momentum court terme), conservé comme référence pour
+    backtest.py : recommandations des trois profils pour une valeur, filtre
+    de liquidité compris."""
+    recos = {profile: recommend_for_profile(profile, variation_pct, ind) for profile in PROFILE_PARAMS}
+    if ind.get("liquidite_insuffisante"):
+        _, note = liquidity_flag(history_points[-1].get("volume") if history_points else None, ind, variation_pct)
+        for reco in recos.values():
+            if reco["signal"] != "SURVEILLER":
+                reco["signal"] = "SURVEILLER"
+                reco["raison"] += " Signal forcé à SURVEILLER : " + (note or "liquidité insuffisante") + "."
+    return recos
+
+
+# ---------------------------------------------------------------------------
+# Modèle multifactoriel (v2) — classement relatif des valeurs entre elles
+# ---------------------------------------------------------------------------
+# Un backtest sur l'historique réel (backtest.py) a montré que le score v1,
+# fondé sur le momentum court terme (5 séances), était CONTRE-productif sur
+# la BRVM : les valeurs qui viennent de monter ont tendance à se replier
+# (retour à la moyenne sur un marché peu liquide), et les signaux
+# changeaient pour près de la moitié des valeurs chaque jour.
+#
+# Le score v2 combine quatre facteurs, chacun documenté dans la littérature
+# et confirmé (même signe, de façon stable) sur l'historique BRVM :
+#   - tendance de fond : performance sur ~30 séances en EXCLUANT les 5
+#     dernières (le « momentum » qui persiste) ;
+#   - retour à la moyenne : un repli récent (5 séances) est un meilleur point
+#     d'entrée qu'une hausse récente, et inversement ;
+#   - faible volatilité : à tendance égale, les valeurs calmes font mieux ;
+#   - liquidité : capitaux échangés en moyenne par séance.
+# Chaque facteur est converti en z-score par rapport à l'ensemble des
+# valeurs de la séance (le score est donc RELATIF : « mieux placée que la
+# moyenne du marché »), pondéré selon le profil, puis lissé sur les
+# dernières séances pour éviter que les signaux ne changent au moindre
+# à-coup.
+FACTOR_MIN_POINTS = 15
+FACTOR_TREND_WINDOW = 30
+FACTOR_SKIP = 5
+FACTOR_VOL_WINDOW = 20
+FACTOR_LIQ_WINDOW = 20
+SCORE_SMOOTHING_SESSIONS = 3
+# Rendements décroissants de la tendance : au-delà de +1 écart-type, une
+# hausse de fond très forte tend à s'essouffler (constaté sur l'historique
+# BRVM) ; la tendance sert surtout à écarter les valeurs les plus faibles.
+TREND_Z_CAP = 1.0
+
+FACTOR_LABELS = {
+    "tendance": "tendance de fond",
+    "repli": "retour à la moyenne",
+    "calme": "faible volatilité",
+    "liquidite": "liquidité",
+}
+
+PROFILE_FACTOR_WEIGHTS = {
+    "prudent":   {"tendance": 0.8, "repli": 0.4, "calme": 0.8, "liquidite": 0.6},
+    "equilibre": {"tendance": 1.0, "repli": 0.5, "calme": 0.5, "liquidite": 0.4},
+    "dynamique": {"tendance": 1.3, "repli": 0.5, "calme": 0.2, "liquidite": 0.2},
+}
+
+# Seuils sur le score composite (en écarts-types par rapport au marché).
+PROFILE_SCORE_THRESHOLDS = {
+    "prudent":   {"acheter": 0.75, "renforcer": 0.35, "alleger": -0.30, "vendre": -0.65},
+    "equilibre": {"acheter": 0.65, "renforcer": 0.30, "alleger": -0.35, "vendre": -0.70},
+    "dynamique": {"acheter": 0.55, "renforcer": 0.25, "alleger": -0.40, "vendre": -0.75},
+}
+
+
+def _clean_points(points):
+    return [p for p in points if p.get("date") != "veille" and p.get("cloture")]
+
+
+def stock_factors(points):
+    """Facteurs bruts d'une valeur à partir de ses points (triés, séance
+    analysée en dernier). None si l'historique est trop court."""
+    pts = _clean_points(points)
+    n = len(pts)
+    if n < FACTOR_MIN_POINTS:
+        return None
+    closes = [p["cloture"] for p in pts]
+    look = min(FACTOR_TREND_WINDOW, n - 1)
+    tendance = (closes[-1 - FACTOR_SKIP] / closes[-1 - look] - 1) * 100.0
+    court = (closes[-1] / closes[-1 - FACTOR_SKIP] - 1) * 100.0
+    rets = [(closes[i] / closes[i - 1] - 1) * 100.0 for i in range(max(1, n - FACTOR_VOL_WINDOW), n)]
+    vol = statistics.pstdev(rets) if len(rets) >= 2 else None
+    traded = [(p.get("volume") or 0) * p["cloture"] for p in pts[-FACTOR_LIQ_WINDOW:]]
+    liq = statistics.mean(traded) if traded else 0.0
+    return {
+        "tendance_pct": tendance,
+        "tendance_fenetre": look - FACTOR_SKIP,
+        "court_pct": court,
+        "volatilite_pct": vol,
+        "capitaux_moyens_fcfa": liq,
+    }
+
+
+def _zscores(values):
+    """z-scores winsorisés (5e-95e centiles), bornés à ±3."""
+    xs = sorted(values.values())
+    if len(xs) < 5:
+        return {k: 0.0 for k in values}
+    lo, hi = xs[int(0.05 * (len(xs) - 1))], xs[int(0.95 * (len(xs) - 1))]
+    clipped = {k: min(max(v, lo), hi) for k, v in values.items()}
+    m = statistics.mean(clipped.values())
+    sd = statistics.pstdev(clipped.values()) or 1.0
+    return {k: max(-3.0, min(3.0, (v - m) / sd)) for k, v in clipped.items()}
+
+
+def _percentiles(values):
+    keys = sorted(values, key=lambda k: values[k])
+    n = len(keys)
+    return {k: (i / (n - 1) if n > 1 else 0.5) for i, k in enumerate(keys)}
+
+
+def universe_factor_scores(history, date_iso):
+    """Scores du jour date_iso pour toutes les valeurs ayant assez
+    d'historique : {symb: {"facteurs", "z", "rang", "composite": {profil}}}."""
+    raw = {}
+    for symb, pts in history.items():
+        if symb.startswith("_IDX_"):
+            continue
+        upto = [p for p in pts if p.get("date") == "veille" or p.get("date", "") <= date_iso]
+        if not upto or upto[-1].get("date") != date_iso:
+            continue
+        f = stock_factors(upto)
+        if f and f["volatilite_pct"] is not None:
+            raw[symb] = f
+    if len(raw) < 5:
+        return {}
+    import math
+    series = {
+        "tendance": {k: v["tendance_pct"] for k, v in raw.items()},
+        "repli": {k: -v["court_pct"] for k, v in raw.items()},
+        "calme": {k: -v["volatilite_pct"] for k, v in raw.items()},
+        "liquidite": {k: math.log1p(v["capitaux_moyens_fcfa"]) for k, v in raw.items()},
+    }
+    z = {name: _zscores(vals) for name, vals in series.items()}
+    rang = {name: _percentiles(vals) for name, vals in series.items()}
+    out = {}
+    for symb in raw:
+        zs = {name: z[name][symb] for name in series}
+        zs["tendance"] = min(zs["tendance"], TREND_Z_CAP)
+        composite = {}
+        for profile, weights in PROFILE_FACTOR_WEIGHTS.items():
+            composite[profile] = sum(weights[n] * zs[n] for n in weights) / sum(weights.values())
+        out[symb] = {
+            "facteurs": raw[symb],
+            "z": zs,
+            "rang": {name: rang[name][symb] for name in series},
+            "composite": composite,
+        }
+    return out
+
+
+def smoothed_universe_scores(history, date_iso, sessions=SCORE_SMOOTHING_SESSIONS):
+    """Scores du jour + composite lissé sur les `sessions` dernières séances
+    (moyenne des composites de chaque séance, calculés avec les seules
+    données connues à cette date)."""
+    dates = sorted({p["date"] for k, pts in history.items() if not k.startswith("_IDX_")
+                    for p in pts if p.get("date") not in (None, "veille") and p["date"] <= date_iso})
+    today = universe_factor_scores(history, date_iso)
+    past = [universe_factor_scores(history, d) for d in dates[-sessions:-1]] if sessions > 1 else []
+    for symb, sc in today.items():
+        sc["composite_jour"] = dict(sc["composite"])
+        for profile in sc["composite"]:
+            vals = [sc["composite"][profile]] + [p[symb]["composite"][profile] for p in past if symb in p]
+            sc["composite"][profile] = statistics.mean(vals)
+    return today
+
+
+def _rank_word(r, high, low):
+    if r >= 0.8:
+        return high
+    if r <= 0.2:
+        return low
+    return None
+
+
+def recommend_from_factors(profile_key, sc, ind, variation_pct):
+    """Signal v2 d'une valeur pour un profil à partir de ses scores
+    factoriels (sc = entrée de smoothed_universe_scores)."""
+    th = PROFILE_SCORE_THRESHOLDS[profile_key]
+    label = PROFILE_PARAMS[profile_key]["label"].lower()
+    score = sc["composite"][profile_key]
+    f, rang = sc["facteurs"], sc["rang"]
+
+    if score >= th["acheter"]:
+        signal = "ACHETER"
+    elif score >= th["renforcer"]:
+        signal = "RENFORCER"
+    elif score <= th["vendre"]:
+        signal = "VENDRE"
+    elif score <= th["alleger"]:
+        signal = "ALLÉGER"
+    else:
+        signal = "CONSERVER"
+
+    reasons = [f"score {score:+.2f} (écarts-types vs marché, lissé sur {SCORE_SMOOTHING_SESSIONS} séances)".replace(".", ",")]
+    trend_word = _rank_word(rang["tendance"], "parmi les meilleures du marché", "parmi les plus faibles du marché")
+    reasons.append(f"tendance de fond {fmt_pct(round(f['tendance_pct'], 2))} sur {f['tendance_fenetre']} séances (hors 5 dernières)"
+                   + (f", {trend_word}" if trend_word else ""))
+    if rang["repli"] >= 0.8:
+        reasons.append(f"repli récent de {fmt_pct(round(f['court_pct'], 2))} sur 5 séances : historiquement un meilleur point d'entrée qu'après une hausse")
+    elif rang["repli"] <= 0.2:
+        reasons.append(f"forte hausse récente ({fmt_pct(round(f['court_pct'], 2))} sur 5 séances) : risque de repli à court terme, mieux vaut ne pas courir après")
+    vol_word = _rank_word(rang["calme"], "parmi les plus calmes", "parmi les plus agitées")
+    if vol_word:
+        reasons.append(f"volatilité {f['volatilite_pct']:.1f}% par séance, {vol_word}".replace(".", ","))
+    liq_word = _rank_word(rang["liquidite"], "valeur parmi les plus liquides", "valeur peu liquide")
+    if liq_word:
+        reasons.append(f"{liq_word} (≈ {f['capitaux_moyens_fcfa'] / 1e6:.1f} M FCFA échangés par séance)".replace(".", ","))
+
+    # Garde-fous absolus (le score est relatif au marché) :
+    # - pas d'achat franc si la tendance de fond est elle-même négative ;
+    # - pas de vente franche si la tendance de fond reste positive ;
+    # - pas d'achat contre une tendance baissière confirmée sur tous les horizons.
+    if signal == "ACHETER" and f["tendance_pct"] <= 0:
+        signal = "RENFORCER"
+        reasons.append("achat franc limité : la tendance de fond n'est pas positive en valeur absolue")
+    if signal == "VENDRE" and f["tendance_pct"] > 0:
+        signal = "ALLÉGER"
+        reasons.append("vente franche évitée : la tendance de fond reste positive en valeur absolue")
+    if ind.get("tendance_alignement") == "baissiere_confirmee" and signal in ("ACHETER", "RENFORCER"):
+        signal = "CONSERVER"
+        reasons.append("conviction d'achat neutralisée : tendance baissière confirmée sur tous les horizons")
+
+    raison = "Signal " + signal.lower() + " (" + label + ") : " + "; ".join(reasons) + "."
+    return {"signal": signal, "score": round(score, 2), "score_jour": round(sc["composite_jour"][profile_key], 2), "raison": raison}
+
+
+def recommend_universe(history, date_iso, inds, variations, volumes):
+    """Recommandations v2 de toutes les valeurs de la séance. Les valeurs dont
+    l'historique est encore trop court retombent sur le moteur v1 (signal
+    plafonné à SURVEILLER/CONSERVER par sa propre gestion de confiance).
+    inds/variations/volumes : {symb: ...} pour la séance date_iso."""
+    scores = smoothed_universe_scores(history, date_iso)
+    out = {}
+    for symb, ind in inds.items():
+        variation = variations.get(symb, 0.0)
+        sc = scores.get(symb)
+        if sc is None:
+            recos = {p: recommend_for_profile(p, variation, ind) for p in PROFILE_PARAMS}
+            for r in recos.values():
+                if r["signal"] in ("ACHETER", "RENFORCER", "ALLÉGER", "VENDRE"):
+                    r["signal"] = "SURVEILLER"
+                    r["raison"] += f" Historique inférieur à {FACTOR_MIN_POINTS} séances : signal limité à SURVEILLER."
+        else:
+            recos = {p: recommend_from_factors(p, sc, ind, variation) for p in PROFILE_PARAMS}
+            ind["facteurs"] = {
+                "tendance_pct": round(sc["facteurs"]["tendance_pct"], 2),
+                "tendance_fenetre": sc["facteurs"]["tendance_fenetre"],
+                "court_pct": round(sc["facteurs"]["court_pct"], 2),
+                "volatilite_pct": round(sc["facteurs"]["volatilite_pct"], 2),
+                "capitaux_moyens_fcfa": round(sc["facteurs"]["capitaux_moyens_fcfa"]),
+                "rang": {k: round(v, 2) for k, v in sc["rang"].items()},
+            }
+        if ind.get("liquidite_insuffisante"):
+            _, note = liquidity_flag(volumes.get(symb), ind, variation)
+            for r in recos.values():
+                if r["signal"] != "SURVEILLER":
+                    r["signal"] = "SURVEILLER"
+                    r["raison"] += " Signal forcé à SURVEILLER : " + (note or "liquidité insuffisante") + "."
+        out[symb] = recos
+    return out
+
+
+def rescore_session(history, date_iso):
+    """Recalcule indicateurs et recommandations v2 de la séance date_iso à
+    partir de l'historique, en n'utilisant que les points connus à cette date
+    (backtest, recalcul des archives). Renvoie {symb: (ind, recos)}."""
+    inds, variations, volumes = {}, {}, {}
+    for symb, pts in history.items():
+        if symb.startswith("_IDX_"):
+            continue
+        window = [p for p in pts if p.get("date") == "veille" or p.get("date", "") <= date_iso]
+        if len(window) < 2 or window[-1].get("date") != date_iso:
+            continue
+        prev, cur = window[-2]["cloture"], window[-1]["cloture"]
+        variation = (cur - prev) / prev * 100.0 if prev else 0.0
+        ind = compute_indicators(window)
+        ind["force_relative_pct"] = None
+        ind["liquidite_insuffisante"], _ = liquidity_flag(window[-1].get("volume"), ind, variation)
+        inds[symb], variations[symb], volumes[symb] = ind, variation, window[-1].get("volume")
+    recos = recommend_universe(history, date_iso, inds, variations, volumes) if inds else {}
+    return {symb: (inds[symb], recos[symb]) for symb in inds}
+
+
 def trend_label(variation_pct, ind):
     if ind["momentum_pct"] is not None and ind["momentum_fenetre"] >= 3:
         m = ind["momentum_pct"]
@@ -510,18 +797,8 @@ def main():
 
         # Filtre de liquidité : override strict, appliqué après le calcul
         # des recommandations ci-dessous.
-        illiquide, liquidite_note = liquidity_flag(volume, ind, variation)
+        illiquide, _ = liquidity_flag(volume, ind, variation)
         ind["liquidite_insuffisante"] = illiquide
-
-        recos = {
-            profile: recommend_for_profile(profile, variation, ind)
-            for profile in PROFILE_PARAMS
-        }
-        if illiquide:
-            for profile, reco in recos.items():
-                if reco["signal"] != "SURVEILLER":
-                    reco["signal"] = "SURVEILLER"
-                    reco["raison"] += " Signal forcé à SURVEILLER : " + liquidite_note + "."
 
         sect = sectors.get(symb, {"secteur": "Non classé", "pays": "Non spécifié"})
 
@@ -537,7 +814,7 @@ def main():
             "variation_pct": round(variation, 2),
             "indicateurs": ind,
             "tendance": trend_label(variation, ind),
-            "recommandations": recos,
+            "recommandations": None,  # calculées après la boucle (classement relatif)
         })
 
         history[symb] = hist_points
@@ -552,6 +829,17 @@ def main():
             biggest_gain = {"symbole": symb, "nom": row.get("nom", symb), "variation_pct": round(variation, 2)}
         if biggest_loss is None or variation < biggest_loss["variation_pct"]:
             biggest_loss = {"symbole": symb, "nom": row.get("nom", symb), "variation_pct": round(variation, 2)}
+
+    # Recommandations v2 : le score étant un classement relatif des valeurs
+    # entre elles, il se calcule une fois toutes les valeurs mises à jour.
+    recos_all = recommend_universe(
+        history, args.date,
+        {s["symbole"]: s["indicateurs"] for s in stocks_out},
+        {s["symbole"]: s["variation_pct"] for s in stocks_out},
+        {s["symbole"]: s["volume"] for s in stocks_out},
+    )
+    for s in stocks_out:
+        s["recommandations"] = recos_all[s["symbole"]]
 
     # Purge de l'historique au-delà de 260 séances par entrée (~1 an) pour
     # borner la taille — s'applique uniformément aux actions et aux indices
@@ -588,6 +876,8 @@ def main():
             "plusForteBaisse": biggest_loss,
             "dataMaturityDays": data_maturity_days,
         },
+        "moteur": {"version": 2, "lissage_seances": SCORE_SMOOTHING_SESSIONS,
+                   "facteurs": FACTOR_LABELS, "ponderations": PROFILE_FACTOR_WEIGHTS},
         "stocks": sorted(stocks_out, key=lambda s: s["symbole"]),
         "history": history,
         "intraday": intraday,

@@ -21,7 +21,9 @@ import sys
 import unicodedata
 from pathlib import Path
 
+import ai_analysis
 import archives
+import backtest
 
 HERE = Path(__file__).resolve().parent
 
@@ -150,10 +152,44 @@ def main():
 
     with open(new_market_path, encoding="utf-8") as f:
         market_data = json.load(f)
+    try:
+        market_data.setdefault("moteur", {})["fiabilite"] = backtest.reliability_summary(market_data["history"])
+    except Exception as e:  # la mesure de fiabilité ne doit jamais bloquer la mise à jour
+        print(f"Mesure de fiabilité impossible : {e}", file=sys.stderr)
     with open(history_path, "w", encoding="utf-8") as f:
         json.dump(market_data["history"], f, ensure_ascii=False)
     with open(intraday_path, "w", encoding="utf-8") as f:
         json.dump(market_data["intraday"], f, ensure_ascii=False)
+
+    # Dossier de séance pour l'IA (embarqué dans la page et l'archive) et
+    # analyse IA automatique, une fois par séance après la clôture.
+    archive_dir = HERE / "archives"
+    index = [e for e in archives.load_index(archive_dir) if e["date"] < date_iso]
+    previous = []
+    for e in index[:5]:
+        try:
+            with open(archive_dir / f"{e['date']}.json", encoding="utf-8") as f:
+                previous.append(json.load(f))
+        except (OSError, ValueError):
+            pass
+    existing = None
+    try:
+        with open(archive_dir / f"{date_iso}.json", encoding="utf-8") as f:
+            existing = json.load(f).get("analyseIA")
+    except (OSError, ValueError):
+        pass
+    context = ai_analysis.build_context(market_data, market_data["history"], previous,
+                                        [archives.index_entry(market_data)] + index)
+    market_data["contexteIA"] = {"systeme": ai_analysis.SYSTEM_PROMPT, "marche": context}
+    analysis = existing
+    if ai_analysis.should_generate(now, session, existing):
+        analysis = ai_analysis.generate(context) or existing
+        if analysis is not existing:
+            print(f"Analyse IA générée ({analysis['modele']}).", file=sys.stderr)
+    if analysis:
+        market_data["analyseIA"] = analysis
+    with open(new_market_path, "w", encoding="utf-8") as f:
+        json.dump(market_data, f, ensure_ascii=False, separators=(",", ":"))
 
     with open(stocks_path, encoding="utf-8") as f:
         raw_stocks = json.load(f)

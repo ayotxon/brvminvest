@@ -34,9 +34,13 @@ def build_snapshot(market_data, raw_stocks=None, raw_indices=None, page_date=Non
         "indices": market_data.get("indices", []),
         "syntheseDuJour": market_data.get("syntheseDuJour", ""),
         "stats": market_data.get("stats", {}),
+        "moteur": market_data.get("moteur"),
         "stocks": market_data.get("stocks", []),
         "intraday": {k: v for k, v in intraday_today.items() if v},
     }
+    for key in ("contexteIA", "analyseIA"):
+        if market_data.get(key):
+            snapshot[key] = market_data[key]
     if raw_stocks is not None or raw_indices is not None:
         snapshot["raw"] = {"stocks": raw_stocks, "indices": raw_indices, "pageDate": page_date}
     return snapshot

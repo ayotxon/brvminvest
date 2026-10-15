@@ -238,13 +238,26 @@
       [state.ui.methodOpen ? "− Masquer la méthodologie" : "+ Comment sont calculées les recommandations ?"]);
     wrap.appendChild(btn);
     if (state.ui.methodOpen) {
+      var fiab = ((state.market.moteur || {}).fiabilite || {});
+      var fp = (fiab.profils || {})[state.user.riskProfile];
       wrap.appendChild(el("div", { class: "method-body" }, [
-        el("p", {}, ["Chaque valeur est notée à partir de plusieurs ingrédients calculés sur l'historique réellement observé depuis la mise en service de l'outil : le momentum (variation récente du cours), la volatilité (écart-type des variations journalières), la confirmation par le volume (volume du jour comparé à la moyenne récente), la ", el("b", {}, ["confirmation multi-horizon"]), " (le court terme — 5 séances —, le moyen terme — 30 séances — et le long terme — 90 séances — pointent-ils dans le même sens ?) et la ", el("b", {}, ["force relative"]), " par rapport à l'indice BRVM Composite (l'action fait-elle mieux ou moins bien que le marché dans son ensemble sur la même période ?)."]),
-        el("p", {}, ["Une tendance de fond baissière confirmée sur plusieurs horizons neutralise toute conviction d'achat court terme, quel que soit le profil : l'outil ne recommande jamais de renforcer une valeur dont le moyen et le long terme restent clairement orientés à la baisse, même si le cours rebondit sur quelques séances."]),
-        el("p", {}, ["Un filtre de liquidité s'applique en dernier lieu : si le volume échangé est nul, ou anormalement faible au regard d'un mouvement de prix marqué, le signal est forcé à ", el("b", {}, ["Surveiller"]), " — sur un marché aussi peu liquide que la BRVM pour une partie de ses valeurs, un mouvement de cours non confirmé par un vrai volume d'échange n'est pas un signal fiable."]),
-        el("p", {}, ["Ces signaux sont pondérés différemment selon le profil : un profil ", el("b", {}, ["prudent"]), " amortit fortement la conviction d'achat tant que l'historique est court et ne recommande jamais d'acheter sur la foi d'une seule séance ; un profil ", el("b", {}, ["dynamique"]), " réagit plus vite au momentum et au volume, quitte à accepter plus de volatilité."]),
-        el("p", {}, ["La vue « Concentration du portefeuille » (colonne de droite) complète l'analyse valeur par valeur : elle signale un risque de concentration sectorielle ou géographique excessive, indépendamment du signal de chaque ligne."]),
-        el("p", {}, ["Les données proviennent des pages officielles et publiques de brvm.org (cours du jour et indices). L'historique se reconstitue séance après séance — plus l'outil est utilisé longtemps, plus les moyennes mobiles, la volatilité et la confirmation multi-horizon deviennent fiables. Un tracé intrajournalier (fenêtre des dernières séances) est aussi conservé pour visualiser le mouvement du jour, sans influencer le calcul des recommandations."]),
+        el("p", {}, ["Chaque valeur reçoit un score qui la ", el("b", {}, ["classe par rapport aux autres valeurs du marché"]), " à partir de quatre facteurs, calculés sur l'historique réellement observé :"]),
+        el("ul", { class: "method-list" }, [
+          el("li", {}, [el("b", {}, ["Tendance de fond"]), " — performance sur environ 25 séances, en excluant les 5 dernières. C'est la tendance qui persiste ; au-delà d'un certain niveau, son effet est plafonné car les envolées tendent à s'essouffler."]),
+          el("li", {}, [el("b", {}, ["Retour à la moyenne"]), " — sur la BRVM, une hausse marquée sur quelques séances tend à se corriger, et inversement : le modèle préfère acheter sur repli plutôt qu'après une envolée."]),
+          el("li", {}, [el("b", {}, ["Faible volatilité"]), " — à tendance égale, les valeurs calmes ont mieux performé."]),
+          el("li", {}, [el("b", {}, ["Liquidité"]), " — capitaux échangés en moyenne par séance : les valeurs liquides ont mieux performé et leurs cours sont plus fiables."])
+        ]),
+        el("p", {}, ["Les facteurs sont pondérés selon le profil (le profil ", el("b", {}, ["prudent"]), " privilégie calme et liquidité, le profil ", el("b", {}, ["dynamique"]), " la tendance), puis le score est ", el("b", {}, ["lissé sur 3 séances"]), " pour que les signaux ne changent pas au moindre à-coup."]),
+        el("p", {}, ["Garde-fous : pas d'achat franc si la tendance de fond est négative, pas de vente franche si elle reste positive, pas d'achat contre une tendance baissière confirmée sur tous les horizons, et signal forcé à ", el("b", {}, ["Surveiller"]), " quand le volume échangé est nul ou anormalement faible."]),
+        fp ? el("p", { class: "method-reliability" }, [
+          el("b", {}, ["Fiabilité mesurée (profil " + labelForProfile(state.user.riskProfile).toLowerCase() + ") : "]),
+          "sur " + fp.seances + " séances, le classement du score a correctement anticipé l'ordre des performances à " + fiab.horizon_seances + " séances " +
+          Math.round(fp.ic_positif_part * 100) + " % du temps (corrélation de rang moyenne " + fmtNum(fp.ic, 2) + ") ; les valeurs à l'achat ont fait en moyenne " +
+          fmtNum(fp.ecart_achat_vente_pts, 2) + " point(s) de mieux que celles à la vente ; " + Math.round(fp.rotation * 100) + " % des signaux changent d'une séance à l'autre. " +
+          "Le score est relatif : dans un marché baissier, les valeurs à l'achat peuvent baisser aussi, mais moins."
+        ]) : null,
+        el("p", {}, ["Ce modèle a remplacé en octobre 2026 un premier moteur fondé sur le momentum court terme, dont le backtest (backtest.py) a montré qu'il était contre-productif sur la BRVM. L'historique étant encore court (quelques dizaines de séances), ces mesures s'affineront avec le temps."]),
         el("p", {}, ["Ceci reste une analyse ", el("b", {}, ["technique"]), " (prix, volume, tendance), pas une analyse fondamentale : les résultats de l'entreprise, les dividendes ou le contexte macroéconomique de l'UEMOA ne sont pas pris en compte."]),
         el("p", { class: "disclaimer" }, ["Ceci est un outil d'aide à la décision basé sur des règles quantitatives transparentes. Ce n'est pas un conseil en investissement réglementé et cela ne remplace pas l'avis d'un conseiller agréé auprès du CREPMF. Les marchés actions comportent un risque de perte en capital."])
       ]));
@@ -555,6 +568,7 @@
           el("div", {}, [el("div", { class: "muted small" }, ["Volume vs moyenne"]), el("div", {}, [ind.volume_ratio != null ? fmtNum(ind.volume_ratio, 2) + "x" : "—"])]),
           el("div", {}, [el("div", { class: "muted small" }, ["Force relative vs BRVM Composite"]), el("div", {}, [ind.force_relative_pct != null ? fmtPct(ind.force_relative_pct) : "n/d"])])
         ]),
+        ind.facteurs ? renderFactors(ind.facteurs, reco) : null,
         el("div", { class: "alignment-row" }, [
           el("span", { class: "badge tone-" + align.tone }, [align.label]),
           el("span", { class: "muted small" }, [" " + align.detail])
@@ -747,8 +761,8 @@
   var AI_CACHE_KEY = "brvm-conseil-ai-cache-v1";
   var AI_CACHE_MAX = 40;
   var AI_MODELS = [
-    { id: "claude-opus-5-5", label: "Claude Opus 5.5 — analyse la plus fine (≈ 0,10 $ / analyse)", fallbacks: true },
-    { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 — bon compromis (≈ 0,05 $ / analyse)", fallbacks: true },
+    { id: "claude-opus-5-5", label: "Claude Opus 5.5 — analyse la plus fine (≈ 0,15 $ / analyse)", fallbacks: true },
+    { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 — bon compromis (≈ 0,07 $ / analyse)", fallbacks: true },
     { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 — rapide et économique (< 0,01 $ / analyse)", fallbacks: false }
   ];
 
@@ -771,6 +785,7 @@
 
   function loadCachedAi() {
     if (state.ai.running) return;
+    state.ai.tab = null;
     var hit = readJsonStorage(AI_CACHE_KEY, {})[aiCacheKey()];
     state.ai.text = hit ? hit.text : "";
     state.ai.meta = hit ? hit.meta : null;
@@ -785,128 +800,63 @@
     writeJsonStorage(AI_CACHE_KEY, cache);
   }
 
-  var AI_SYSTEM_PROMPT = [
-    "Tu es un analyste actions spécialisé sur la BRVM (Bourse Régionale des Valeurs Mobilières de l'UEMOA, Abidjan). Tu reçois les données d'une séance, produites par un outil d'analyse quantitative (indicateurs techniques et signaux calculés par des règles), et tu rédiges en français une analyse de la séance pour un investisseur particulier.",
-    "",
-    "Ta valeur ajoutée par rapport aux signaux automatiques : prendre du recul, relier les mouvements entre eux (secteurs, pays, indices, largeur du marché), distinguer ce qui est significatif de ce qui ne l'est pas, repérer les signaux automatiques fragiles ou contradictoires (volume faible, historique court, tendances divergentes selon l'horizon, changement de signal récent), et traduire tout cela en points d'attention concrets pour le profil de risque et le portefeuille de l'investisseur.",
-    "",
-    "Règles :",
-    "- Appuie-toi uniquement sur les données fournies. Tu n'as accès ni à l'actualité, ni aux résultats des sociétés, ni aux dividendes : ne les invente pas. Si une explication fondamentale te paraît plausible, présente-la explicitement comme une hypothèse à vérifier.",
-    "- Étaye chaque point par des chiffres précis tirés des données (variations, volumes, momentum, force relative).",
-    "- Sur la BRVM, beaucoup de valeurs s'échangent peu : un mouvement de cours sans volume n'est pas un signal fiable, dis-le quand c'est le cas.",
-    "- Ajuste ton niveau de confiance à la profondeur de l'historique disponible (nombre de séances).",
-    "- Ce n'est pas un conseil en investissement réglementé : formule des points d'attention, des scénarios et des conditions à surveiller plutôt que des ordres d'achat ou de vente.",
-    "",
-    "Format : Markdown, titres de niveau 2, dans cet ordre :",
-    "## L'essentiel en 3 points",
-    "## Lecture du marché (indices, largeur, secteurs)",
-    "## Valeurs à la loupe (4 à 8 valeurs réellement significatives)",
-    "## Signaux à prendre avec prudence",
-    "## Votre portefeuille et votre liste de suivi (seulement si fournis)",
-    "## À surveiller lors des prochaines séances",
-    "Sois dense et concret, environ 600 à 900 mots. Pas de tableau de plus de 8 lignes."
-  ].join("\n");
-
   function numOrDash(x, d) { return x == null || isNaN(x) ? "—" : Number(x).toFixed(d == null ? 2 : d); }
 
-  function buildAiPrompt(previous) {
-    var m = state.market, s = m.stats || {}, profile = state.user.riskProfile;
-    var out = [];
-    out.push("Séance : " + (m.asOfLabel || m.asOfDate) + " (" + m.asOfDate + "), données relevées le " + (m.lastUpdate || "—") + ".");
-    out.push("Profondeur de l'historique : " + (s.dataMaturityDays || 0) + " séance(s).");
-    out.push("Profil de risque de l'investisseur : " + labelForProfile(profile) + ".");
-    out.push("Largeur du marché : " + s.hausses + " hausses, " + s.baisses + " baisses, " + s.stables + " stables.");
-    out.push("");
-    out.push("### Indices (nom | catégorie | clôture | var. jour % | var. depuis le 1er janvier % | momentum 5 séances %)");
-    if (!(m.indices || []).length) out.push("(indices non disponibles pour cette séance : ne commente pas les indices, appuie-toi sur la largeur du marché)");
-    (m.indices || []).forEach(function (ix) {
-      out.push([ix.nom, ix.categorie || "principal", numOrDash(ix.cloture), numOrDash(ix.variation_pct), numOrDash(ix.variation_ytd_pct),
-        numOrDash((ix.indicateurs || {}).momentum_pct)].join(" | "));
-    });
-    out.push("");
-    out.push("### Valeurs (symbole | nom | secteur | pays | cours FCFA | var. jour % | volume | volume/moyenne 10 séances | momentum 5j % | momentum 30j % | momentum 90j % | volatilité 30j % | force relative vs Composite % | tendance multi-horizon | liquidité | signaux prudent / équilibré / dynamique (score))");
-    (m.stocks || []).forEach(function (st) {
-      var ind = st.indicateurs || {}, r = st.recommandations || {};
-      function sig(k) { return r[k] ? r[k].signal + " (" + numOrDash(r[k].score) + ")" : "—"; }
-      out.push([st.symbole, st.nom, st.secteur, st.pays, numOrDash(st.cours_cloture, 0), numOrDash(st.variation_pct), numOrDash(st.volume, 0),
-        numOrDash(ind.volume_ratio), numOrDash(ind.momentum_pct), numOrDash(ind.momentum_moyen_pct), numOrDash(ind.momentum_long_pct),
-        numOrDash(ind.volatilite_pct), numOrDash(ind.force_relative_pct), ind.tendance_alignement || "—",
-        ind.liquidite_insuffisante ? "INSUFFISANTE" : "ok", sig("prudent") + " / " + sig("equilibre") + " / " + sig("dynamique")].join(" | "));
-    });
-
-    if (previous && previous.stocks) {
-      var prevBySymb = {};
-      previous.stocks.forEach(function (p) { prevBySymb[p.symbole] = p; });
-      var changes = [];
-      (m.stocks || []).forEach(function (st) {
-        var p = prevBySymb[st.symbole];
-        var a = p && p.recommandations && p.recommandations[profile], b = st.recommandations && st.recommandations[profile];
-        if (a && b && a.signal !== b.signal) changes.push(st.symbole + " : " + a.signal + " → " + b.signal);
-      });
-      out.push("");
-      out.push("### Changements de signal (profil " + labelForProfile(profile).toLowerCase() + ") depuis la séance précédente (" + previous.asOfDate + ")");
-      out.push(changes.length ? changes.join("\n") : "Aucun changement de signal.");
-    }
-
+  // Le dossier de la séance (contexte de marché + consignes) est construit
+  // côté serveur par ai_analysis.py et embarqué dans la page / l'archive :
+  // l'analyse personnalisée y ajoute seulement le profil et le portefeuille.
+  function buildPersonalSection() {
+    var profile = state.user.riskProfile;
+    var cur = PROFILES.filter(function (p) { return p.key === profile; })[0];
+    var out = ["", "## Investisseur", "Profil de risque : " + labelForProfile(profile) + (cur ? " — " + cur.desc : "")];
     var settings = aiSettings();
-    if (settings.includePortfolio) {
-      var portfolio = state.user.portfolio || [], watch = state.user.watchlist || [];
-      if (portfolio.length) {
-        var b = concentrationBreakdown();
-        out.push("");
-        out.push("### Portefeuille de l'investisseur (symbole | quantité | PRU FCFA | cours FCFA | plus/moins-value % | poids % | signal du profil)");
-        portfolio.forEach(function (pos) {
-          var st = findStock(pos.symbole);
-          var cours = st ? st.cours_cloture : null;
-          var val = cours != null ? cours * pos.quantite : pos.prix_achat * pos.quantite;
-          var pnlPct = cours != null && pos.prix_achat ? (cours / pos.prix_achat - 1) * 100 : null;
-          out.push([pos.symbole, pos.quantite, pos.prix_achat, numOrDash(cours, 0), numOrDash(pnlPct), numOrDash(b.totalVal ? val / b.totalVal * 100 : null, 1),
-            st ? st.recommandations[profile].signal : "—"].join(" | "));
-        });
-        out.push("Répartition sectorielle : " + b.secteurs.map(function (e) { return e.label + " " + e.pct.toFixed(0) + " %"; }).join(", ") + ".");
-        out.push("Répartition par pays : " + b.pays.map(function (e) { return e.label + " " + e.pct.toFixed(0) + " %"; }).join(", ") + ".");
-      }
-      if (watch.length) {
-        out.push("");
-        out.push("### Liste de suivi de l'investisseur : " + watch.join(", "));
-      }
-      if (!portfolio.length && !watch.length) {
-        out.push("");
-        out.push("L'investisseur n'a renseigné ni portefeuille ni liste de suivi : omets la section correspondante.");
-      }
-    } else {
-      out.push("");
-      out.push("L'investisseur n'a pas souhaité partager son portefeuille : omets la section correspondante.");
+    var portfolio = state.user.portfolio || [], watch = state.user.watchlist || [];
+    if (!settings.includePortfolio) {
+      out.push("L'investisseur n'a pas souhaité partager son portefeuille : omets la section portefeuille mais adapte l'analyse à son profil.");
+      return out.join("\n");
     }
-    out.push("");
-    out.push("Rédige l'analyse de cette séance.");
+    if (portfolio.length) {
+      var b = concentrationBreakdown();
+      out.push("", "### Portefeuille (symbole | quantité | PRU FCFA | date d'achat | cours FCFA | plus/moins-value % | poids % | signal du profil)");
+      portfolio.forEach(function (pos) {
+        var st = findStock(pos.symbole);
+        var cours = st ? st.cours_cloture : null;
+        var val = cours != null ? cours * pos.quantite : pos.prix_achat * pos.quantite;
+        var pnlPct = cours != null && pos.prix_achat ? (cours / pos.prix_achat - 1) * 100 : null;
+        out.push([pos.symbole, pos.quantite, pos.prix_achat, pos.date_achat || "—", numOrDash(cours, 0), numOrDash(pnlPct),
+          numOrDash(b.totalVal ? val / b.totalVal * 100 : null, 1), st ? st.recommandations[profile].signal : "—"].join(" | "));
+      });
+      out.push("Valeur totale : " + Math.round(b.totalVal) + " FCFA.");
+      out.push("Répartition sectorielle : " + b.secteurs.map(function (e) { return e.label + " " + e.pct.toFixed(0) + " %"; }).join(", ") + ".");
+      out.push("Répartition par pays : " + b.pays.map(function (e) { return e.label + " " + e.pct.toFixed(0) + " %"; }).join(", ") + ".");
+    }
+    if (watch.length) out.push("", "### Liste de suivi : " + watch.join(", "));
+    if (!portfolio.length && !watch.length) out.push("Ni portefeuille ni liste de suivi renseignés : omets cette section mais adapte l'analyse au profil.");
     return out.join("\n");
-  }
-
-  function previousArchiveDate() {
-    var cur = state.market.asOfDate;
-    var prev = (state.archiveIndex || []).filter(function (e) { return e.date < cur; })[0];
-    return prev ? prev.date : null;
   }
 
   function runAiAnalysis() {
     var settings = aiSettings();
     if (!settings.apiKey) { state.ai.settingsOpen = true; render(); return; }
+    var ctx = state.market.contexteIA;
+    if (!ctx || !ctx.marche) {
+      state.ai.error = "Le dossier d'analyse n'est pas disponible pour cette séance.";
+      render();
+      return;
+    }
     var model = AI_MODELS.filter(function (x) { return x.id === settings.model; })[0] || AI_MODELS[0];
     var forKey = aiCacheKey();
-    state.ai = { running: true, text: "", status: "Préparation des données…", error: null, meta: null, settingsOpen: false };
+    state.ai = { running: true, text: "", status: "L'IA analyse la séance…", error: null, meta: null, settingsOpen: false, tab: "perso" };
     render();
 
-    var prevDate = previousArchiveDate();
-    var prevPromise = prevDate ? fetchArchive(prevDate).catch(function () { return null; }) : Promise.resolve(null);
-    prevPromise.then(function (previous) {
+    Promise.resolve().then(function () {
       var body = {
         model: model.id,
         max_tokens: 16000,
         stream: true,
-        system: AI_SYSTEM_PROMPT,
-        output_config: { effort: "medium" },
-        messages: [{ role: "user", content: buildAiPrompt(previous) }]
+        system: ctx.systeme,
+        output_config: { effort: "high" },
+        messages: [{ role: "user", content: ctx.marche + "\n" + buildPersonalSection() + "\n\nRédige l'analyse de cette séance pour cet investisseur." }]
       };
       var headers = {
         "content-type": "application/json",
@@ -920,7 +870,6 @@
         body.fallbacks = "default";
         headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
       }
-      setAiStatus("L'IA analyse la séance…");
       return fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: headers, body: JSON.stringify(body) });
     }).then(function (resp) {
       if (!resp.ok) {
@@ -1088,61 +1037,119 @@
     return form;
   }
 
-  function renderAiPanel() {
-    var settings = aiSettings();
+  function aiModelLabel(id) {
+    var m = AI_MODELS.filter(function (x) { return x.id === id || (id || "").indexOf(x.id) === 0; })[0];
+    return m ? m.label.split(" — ")[0] : id;
+  }
+
+  function renderAiDaily(box) {
+    var a = state.market.analyseIA;
+    if (!a || !a.texte) {
+      box.appendChild(el("p", { class: "muted small" }, [
+        "Pas d'analyse automatique pour cette séance. Elle est rédigée chaque jour après la clôture lorsque le secret ANTHROPIC_API_KEY est configuré dans le dépôt GitHub (voir README). ",
+        "Vous pouvez en attendant lancer une analyse personnalisée."
+      ]));
+      return;
+    }
+    box.appendChild(el("div", { class: "ai-output", html: renderMarkdown(a.texte) }));
+    box.appendChild(el("div", { class: "ai-foot" }, [
+      el("span", { class: "muted small" }, ["Rédigée automatiquement le " + new Date(a.genereLe).toLocaleString("fr-FR") + " par " + aiModelLabel(a.modele) + ", pour l'ensemble des profils. "]),
+      el("button", { class: "link-btn small", onclick: function () {
+        downloadBlob("analyse-ia-brvm-" + state.market.asOfDate + ".md", "text/markdown;charset=utf-8", "# Analyse IA — " + (state.market.asOfLabel || state.market.asOfDate) + "\n\n" + a.texte);
+      } }, ["Télécharger (.md)"])
+    ]));
+  }
+
+  function renderAiPersonal(box, settings) {
     var ai = state.ai;
-    var box = el("section", { class: "panel ai-panel" }, [
-      el("div", { class: "ai-head" }, [
-        el("h2", {}, ["Analyse IA de la séance"]),
-        el("button", { class: "link-btn", onclick: function () { state.ai.settingsOpen = !state.ai.settingsOpen; render(); } },
-          [settings.apiKey ? "Paramètres" : "Configurer"])
-      ])
-    ]);
-    if (ai.settingsOpen || (!settings.apiKey && !ai.text)) {
+    if (ai.settingsOpen || !settings.apiKey) {
       if (!ai.settingsOpen) {
         box.appendChild(el("p", { class: "muted small" }, [
-          "Obtenez une lecture commentée de la séance : ce qui compte vraiment, les signaux automatiques à relativiser, et ce que cela implique pour votre profil et votre portefeuille."
+          "Analyse rédigée pour votre profil de risque et votre portefeuille : impact de la séance sur vos lignes, concentration, valeurs de votre liste de suivi."
         ]));
       }
       box.appendChild(renderAiSettings(settings));
-      if (!ai.text) return box;
+      if (!ai.text) return;
     }
-
-    var portfolioToggle = el("input", { type: "checkbox", id: "ai-include-portfolio" });
-    portfolioToggle.checked = settings.includePortfolio;
-    portfolioToggle.addEventListener("change", function () { saveAiSettings({ includePortfolio: portfolioToggle.checked }); });
-    box.appendChild(el("div", { class: "ai-actions" }, [
-      el("button", { class: "btn", disabled: ai.running ? "disabled" : null, onclick: runAiAnalysis }, [
-        ai.running ? "Analyse en cours…" : (ai.text ? "Relancer l'analyse" : "✦ Analyser la séance avec l'IA")
-      ]),
-      el("label", { class: "small ai-check", for: "ai-include-portfolio" }, [portfolioToggle, " Inclure mon portefeuille et ma liste de suivi"])
-    ]));
-
+    if (settings.apiKey) {
+      var portfolioToggle = el("input", { type: "checkbox", id: "ai-include-portfolio" });
+      portfolioToggle.checked = settings.includePortfolio;
+      portfolioToggle.addEventListener("change", function () { saveAiSettings({ includePortfolio: portfolioToggle.checked }); });
+      box.appendChild(el("div", { class: "ai-actions" }, [
+        el("button", { class: "btn", disabled: ai.running ? "disabled" : null, onclick: runAiAnalysis }, [
+          ai.running ? "Analyse en cours…" : (ai.text ? "Relancer l'analyse" : "✦ Analyser la séance pour moi")
+        ]),
+        el("label", { class: "small ai-check", for: "ai-include-portfolio" }, [portfolioToggle, " Inclure mon portefeuille et ma liste de suivi"])
+      ]));
+    }
     if (ai.running) box.appendChild(el("p", { class: "muted small ai-status", id: "ai-status" }, [ai.status]));
     if (ai.error) box.appendChild(el("p", { class: "small concentration-warning" }, ["⚠ " + ai.error]));
     if (ai.text) {
       box.appendChild(el("div", { class: "ai-output", id: "ai-output", html: renderMarkdown(ai.text) }));
       if (!ai.running && ai.meta) {
-        var modelLabel = (AI_MODELS.filter(function (x) { return x.id === ai.meta.model; })[0] || { label: ai.meta.model }).label.split(" — ")[0];
         box.appendChild(el("div", { class: "ai-foot" }, [
           el("span", { class: "muted small" }, [
-            "Générée le " + new Date(ai.meta.at).toLocaleString("fr-FR") + " par " + modelLabel + " (profil " + labelForProfile(ai.meta.profile).toLowerCase() + "). "
+            "Générée le " + new Date(ai.meta.at).toLocaleString("fr-FR") + " par " + aiModelLabel(ai.meta.model) + " (profil " + labelForProfile(ai.meta.profile).toLowerCase() + "). "
           ]),
           el("button", { class: "link-btn small", onclick: function () {
-            downloadBlob("analyse-ia-brvm-" + ai.meta.date + ".md", "text/markdown;charset=utf-8", "# Analyse IA — " + (state.market.asOfLabel || ai.meta.date) + "\n\n" + ai.text);
+            downloadBlob("analyse-ia-perso-brvm-" + ai.meta.date + ".md", "text/markdown;charset=utf-8", "# Analyse IA personnalisée — " + (state.market.asOfLabel || ai.meta.date) + "\n\n" + ai.text);
           } }, ["Télécharger (.md)"])
         ]));
       }
-      box.appendChild(el("p", { class: "disclaimer" }, [
-        "Analyse générée automatiquement par une IA à partir des seules données affichées ici : elle peut contenir des erreurs et ne constitue pas un conseil en investissement."
-      ]));
-    } else if (!ai.running && !ai.error) {
+    } else if (!ai.running && !ai.error && settings.apiKey) {
       box.appendChild(el("p", { class: "muted small" }, [
-        "Commentaire de la séance du " + (state.market.asOfLabel || "jour") + " pour le profil " + labelForProfile(state.user.riskProfile).toLowerCase() +
-        " : faits marquants, signaux fragiles, points d'attention pour votre portefeuille."
+        "Analyse de la séance du " + (state.market.asOfLabel || "jour") + " pour le profil " + labelForProfile(state.user.riskProfile).toLowerCase() +
+        " : impact sur vos positions, signaux fragiles, points d'attention."
+      ]));
+    }
+  }
+
+  function renderAiPanel() {
+    var settings = aiSettings();
+    var hasDaily = !!(state.market.analyseIA && state.market.analyseIA.texte);
+    var tab = state.ai.tab || (state.ai.text || !hasDaily ? "perso" : "jour");
+    var box = el("section", { class: "panel ai-panel" }, [
+      el("div", { class: "ai-head" }, [
+        el("h2", {}, ["Analyse IA de la séance"]),
+        tab === "perso" ? el("button", { class: "link-btn", onclick: function () { state.ai.settingsOpen = !state.ai.settingsOpen; render(); } },
+          [settings.apiKey ? "Paramètres" : "Configurer"]) : null
+      ]),
+      el("div", { class: "profile-options ai-tabs", role: "tablist" }, [["jour", "Analyse du jour"], ["perso", "Mon analyse personnalisée"]].map(function (t) {
+        return el("button", { class: "profile-btn" + (tab === t[0] ? " active" : ""), role: "tab", "aria-selected": tab === t[0] ? "true" : "false",
+          onclick: function () { state.ai.tab = t[0]; render(); } }, [t[1]]);
+      }))
+    ]);
+    if (tab === "jour") renderAiDaily(box); else renderAiPersonal(box, settings);
+    if (hasDaily || state.ai.text) {
+      box.appendChild(el("p", { class: "disclaimer" }, [
+        "Analyse générée par une IA à partir des seules données de l'outil : elle peut contenir des erreurs et ne constitue pas un conseil en investissement."
       ]));
     }
     return box;
+  }
+
+  // Les 4 facteurs du score v2, avec le rang de la valeur dans le marché
+  // (0 = la moins bien placée, 1 = la mieux placée sur ce critère).
+  function renderFactors(f, reco) {
+    var items = [
+      ["Tendance de fond (" + f.tendance_fenetre + " séances hors 5 dern.)", fmtPct(f.tendance_pct), f.rang.tendance],
+      ["5 dernières séances", fmtPct(f.court_pct), f.rang.repli],
+      ["Volatilité / séance", fmtNum(f.volatilite_pct, 1) + " %", f.rang.calme],
+      ["Capitaux échangés / séance", fmtNum(f.capitaux_moyens_fcfa / 1e6, 1) + " M FCFA", f.rang.liquidite]
+    ];
+    return el("div", { class: "factors" }, [
+      el("div", { class: "muted small factors-title" }, [
+        "Facteurs du score (barre = position dans le marché, à droite = favorable)" + (reco && reco.score != null ? " — score " + (reco.score > 0 ? "+" : "") + fmtNum(reco.score, 2) : "")
+      ])
+    ].concat(items.map(function (it) {
+      return el("div", { class: "factor-row" }, [
+        el("span", { class: "factor-label small" }, [it[0]]),
+        el("span", { class: "factor-value small num" }, [it[1]]),
+        el("div", { class: "concentration-bar-track factor-track" }, [
+          el("div", { class: "factor-dot", style: "left:calc(" + Math.round(it[2] * 100) + "% - 5px)" })
+        ])
+      ]);
+    })));
   }
 
   function renderRoot() {

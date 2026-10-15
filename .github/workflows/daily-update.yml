@@ -29,6 +29,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Récupérer les cours et reconstruire le dashboard
+        # Analyse IA automatique (optionnelle) : ajouter le secret
+        # ANTHROPIC_API_KEY dans Settings → Secrets and variables → Actions.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python3 update_daily.py
 
       - name: Publier les changements

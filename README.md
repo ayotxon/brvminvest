@@ -127,26 +127,32 @@ reconstituées depuis l'historique git avec `python3 backfill_archives.py`
 
 ## Analyse IA de la séance
 
-Le bouton **Analyser la séance avec l'IA** envoie les données de la séance
-affichée (indices, toutes les valeurs avec leurs indicateurs et signaux, les
-changements de signal depuis la séance précédente, et — si la case est
-cochée — ton portefeuille et ta liste de suivi) à l'API Claude d'Anthropic,
-qui rédige une lecture commentée : l'essentiel, la lecture du marché, les
-valeurs à la loupe, les signaux à relativiser, l'impact sur ton portefeuille
-et ce qu'il faut surveiller ensuite.
+Le panneau **Analyse IA de la séance** a deux onglets.
 
-- Il faut une clé API Anthropic (https://console.anthropic.com, facturation
-  à l'usage : de moins d'un centime à ~0,10 $ par analyse selon le modèle).
-  Elle se saisit via « Configurer », reste dans le `localStorage` de ton
-  navigateur et n'est envoyée qu'à `api.anthropic.com` (appel direct depuis
-  le navigateur, sans serveur intermédiaire).
-- Modèles proposés : Claude Opus 5.5 (par défaut, analyse la plus fine),
-  Sonnet 5.5, Haiku 5.5 (le plus économique).
-- Chaque analyse est mémorisée dans le navigateur par séance et par profil,
-  et téléchargeable en Markdown.
-- L'IA ne voit que les données du dashboard (pas d'actualité, ni de
-  résultats d'entreprises) : c'est un commentaire de plus, pas un conseil en
-  investissement.
+**Analyse du jour** : rédigée automatiquement une fois par séance, après la
+clôture, par Claude Opus 5.5 (API Anthropic), et **archivée avec la séance**.
+Pour l'activer, ajoute ta clé API dans le dépôt GitHub : **Settings → Secrets
+and variables → Actions → New repository secret**, nom `ANTHROPIC_API_KEY`
+(clé créée sur https://console.anthropic.com ; environ 0,15 $ par jour, soit
+~3 $ par mois). Sans ce secret, tout le reste fonctionne normalement.
+
+**Mon analyse personnalisée** : le bouton envoie le même dossier, plus ton
+profil de risque et (si la case est cochée) ton portefeuille et ta liste de
+suivi, depuis ton navigateur avec ta propre clé API. La clé reste dans le
+`localStorage` de ton navigateur et n'est envoyée qu'à `api.anthropic.com`.
+Modèles proposés : Opus 5.5 (par défaut), Sonnet 5.5 ou Haiku 5.5 (le plus
+économique). Chaque analyse est mémorisée par séance et par profil, et
+téléchargeable en Markdown.
+
+Le **dossier de séance** transmis à l'IA (`ai_analysis.py`, embarqué dans
+la page et dans chaque archive) contient : indices principaux et sectoriels,
+largeur du marché sur 10 séances, agrégats par secteur, chaque valeur avec
+ses facteurs et leur rang, ses signaux pour les 3 profils, l'historique de
+ses signaux sur 5 séances et ses 10 derniers cours, les changements de
+signal depuis la veille, la fiabilité mesurée du modèle et l'analyse IA de
+la veille (pour suivre ce qui se confirme ou s'invalide). L'IA ne voit pas
+l'actualité ni les résultats des sociétés : c'est un commentaire éclairé,
+pas un conseil en investissement.
 
 ## Fichiers du projet
 
@@ -169,6 +175,8 @@ et ce qu'il faut surveiller ensuite.
 - `backfill_archives.py` — reconstitution des archives passées depuis
   l'historique git (usage ponctuel).
 - `archives/` — une archive JSON par séance + `index.json`.
+- `ai_analysis.py` — dossier de séance pour l'IA et analyse automatique.
+- `backtest.py` — mesure de la fiabilité des signaux sur l'historique.
 - `sectors.json` — table secteur/pays des ~47 valeurs BRVM.
 - `history.json` — historique quotidien cumulé des cours (un point par
   séance, par valeur) ; grossit à chaque nouvelle séance détectée.
@@ -179,15 +187,39 @@ et ce qu'il faut surveiller ensuite.
 
 ## Comment sont calculées les recommandations
 
-Pour chaque valeur : momentum (court terme 5 séances, moyen terme 30
-séances, long terme 90 séances), volatilité (écart-type des variations
-journalières), confirmation par le volume, force relative par rapport à
-l'indice BRVM Composite, et un filtre de liquidité qui force le signal à
-"Surveiller" quand le volume échangé est nul ou anormalement faible pour un
-mouvement de prix marqué. Une tendance de fond baissière confirmée sur
-plusieurs horizons neutralise toute conviction d'achat court terme, quel que
-soit le profil. Le détail complet est expliqué dans le panneau
-"Comment sont calculées les recommandations ?" du dashboard lui-même.
+Chaque valeur reçoit un score qui la **classe par rapport aux autres valeurs
+du marché** (en écarts-types), à partir de quatre facteurs :
+
+| Facteur | Mesure | Pourquoi |
+|---|---|---|
+| Tendance de fond | performance sur ~25 séances, hors les 5 dernières (plafonnée à +1 écart-type) | la tendance qui persiste ; les envolées extrêmes s'essoufflent |
+| Retour à la moyenne | mouvement des 5 dernières séances, en sens inverse | sur la BRVM, une hausse rapide tend à se corriger : on préfère acheter sur repli |
+| Faible volatilité | écart-type des variations sur 20 séances | à tendance égale, les valeurs calmes font mieux |
+| Liquidité | capitaux échangés en moyenne par séance | les valeurs liquides font mieux et leurs cours sont plus fiables |
+
+Les facteurs sont pondérés selon le profil (prudent : calme et liquidité ;
+dynamique : tendance), le score est lissé sur 3 séances, puis converti en
+signal. Garde-fous : pas d'achat franc si la tendance de fond est négative,
+pas de vente franche si elle est positive, pas d'achat contre une tendance
+baissière confirmée sur tous les horizons, signal forcé à « Surveiller » si
+le volume est nul ou anormalement faible.
+
+### Fiabilité mesurée : `backtest.py`
+
+`python3 backtest.py --horizon 5` rejoue le moteur séance par séance sur
+l'historique réel, sans jamais regarder le futur, et compare l'ancien moteur
+(v1, momentum court terme) au moteur actuel (v2). Sur les données disponibles
+mi-octobre 2026 (18 à 23 séances évaluables) :
+
+| | v1 (ancien) | v2 (actuel) |
+|---|---|---|
+| Corrélation score / performance à 5 séances | −0,09 (positive 22 % du temps) | +0,21 à +0,25 (positive 100 % du temps, profils prudent/équilibré) |
+| Écart de performance achat − vente à 5 séances | −1,6 pt | +0,8 à +1,2 pt |
+| Signaux qui changent d'une séance à l'autre | ~45 % | ~20 % |
+
+Cette mesure est recalculée à chaque mise à jour et affichée dans le panneau
+méthodologie du dashboard ; elle est aussi transmise à l'IA. L'historique
+étant encore court, elle s'affinera avec le temps.
 
 C'est un outil d'aide à la décision basé sur des règles quantitatives
 transparentes — pas un conseil en investissement réglementé, et ça ne
