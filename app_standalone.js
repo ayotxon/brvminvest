@@ -51,7 +51,7 @@
     }
     (children || []).forEach(function (c) {
       if (c == null) return;
-      if (typeof c === "string") e.appendChild(document.createTextNode(c));
+      if (typeof c === "string" || typeof c === "number") e.appendChild(document.createTextNode(String(c)));
       else e.appendChild(c);
     });
     return e;
@@ -260,7 +260,7 @@
         ]) : null,
         el("p", {}, ["Ce modèle a remplacé en octobre 2026 un premier moteur fondé sur le momentum court terme, dont le backtest (backtest.py) a montré qu'il était contre-productif sur la BRVM. L'historique étant encore court (quelques dizaines de séances), ces mesures s'affineront avec le temps."]),
         el("p", {}, ["Ceci reste une analyse ", el("b", {}, ["technique"]), " (prix, volume, tendance), pas une analyse fondamentale : les résultats de l'entreprise, les dividendes ou le contexte macroéconomique de l'UEMOA ne sont pas pris en compte."]),
-        el("p", { class: "disclaimer" }, ["Ceci est un outil d'aide à la décision basé sur des règles quantitatives transparentes. Ce n'est pas un conseil en investissement réglementé et cela ne remplace pas l'avis d'un conseiller agréé auprès du CREPMF. Les marchés actions comportent un risque de perte en capital."])
+        el("p", { class: "disclaimer" }, ["Ceci est un outil d'aide à la décision basé sur des règles quantitatives transparentes. Ce n'est pas un conseil en investissement réglementé et cela ne remplace pas l'avis d'un conseiller agréé par l'AMF-UMOA (ex-CREPMF). Les marchés actions comportent un risque de perte en capital."])
       ]));
     }
     return wrap;
@@ -551,7 +551,7 @@
   function backupUserData() {
     var data = { format: "brvm-conseil-sauvegarde", version: 1, exportedAt: new Date().toISOString(),
       riskProfile: state.user.riskProfile, transactions: state.user.transactions || [], watchlist: state.user.watchlist || [],
-      recherches: readJsonStorage(RESEARCH_KEY, []) };
+      recherches: readJsonStorage(RESEARCH_KEY, []), opportunites: readJsonStorage(OPPS_KEY, []) };
     downloadBlob("brvm-conseil-sauvegarde-" + todayIso() + ".json", "application/json", JSON.stringify(data, null, 1));
   }
 
@@ -565,6 +565,7 @@
       state.user.watchlist = d.watchlist || [];
       if (d.riskProfile) state.user.riskProfile = d.riskProfile;
       if (Array.isArray(d.recherches)) writeJsonStorage(RESEARCH_KEY, d.recherches);
+      if (Array.isArray(d.opportunites)) writeJsonStorage(OPPS_KEY, d.opportunites);
       syncPortfolio(); loadCachedAi(); render(); saveUserState();
     }).catch(function (e) { alert("Restauration impossible : " + e.message); });
   }
@@ -1471,28 +1472,18 @@
     ];
   }
 
-  function setResearchStatus(text) {
-    state.research.status = text;
-    var node = document.getElementById("research-status");
-    if (node) node.textContent = text; else render();
-  }
-
-  function runResearch() {
+  // Boucle de recherche web générique (recherche de valeurs, opportunités) :
+  // rs = objet d'état affiché (running, status, queries, startedAt), idPrefix =
+  // préfixe des éléments DOM de progression. Résout { blocks, model, stopReason }.
+  function webResearch(rs, idPrefix, system, userContent) {
     var settings = aiSettings();
-    if (!settings.apiKey) { state.ai.tab = "perso"; state.ai.settingsOpen = true; render(); return; }
-    var ctx = state.live.contexteIA;
-    if (!ctx || !ctx.marche) { state.research.error = "Le dossier de la séance n'est pas disponible."; render(); return; }
     var model = AI_MODELS.filter(function (x) { return x.id === settings.model; })[0] || AI_MODELS[0];
-    var userContent = "Date du jour : " + todayIso() + ". Dernière séance disponible : " + state.live.asOfDate + ".\n\n" +
-      ctx.marche + (settings.includePortfolio ? "\n" + buildPersonalSection() : "") + buildDocumentsSection() +
-      "\n\nMène tes recherches puis présente les 2 valeurs retenues.";
-    var assistantBlocks = [];
-    var turns = 0;
-    state.research = { running: true, status: "L'IA lance ses recherches…", queries: [], error: null, openId: null, startedAt: Date.now() };
+    var assistantBlocks = [], turns = 0;
+    rs.running = true; rs.status = "L'IA lance ses recherches…"; rs.queries = []; rs.error = null; rs.startedAt = Date.now();
     render();
     var timer = setInterval(function () {
-      var node = document.getElementById("research-elapsed");
-      if (node) node.textContent = Math.round((Date.now() - state.research.startedAt) / 1000) + " s";
+      var node = document.getElementById(idPrefix + "-elapsed");
+      if (node) node.textContent = Math.round((Date.now() - rs.startedAt) / 1000) + " s";
     }, 1000);
 
     function step() {
@@ -1500,38 +1491,43 @@
       var messages = [{ role: "user", content: userContent }];
       if (assistantBlocks.length) messages.push({ role: "assistant", content: assistantBlocks });
       return callClaudeOnce({
-        model: model.id, max_tokens: 16000, system: RESEARCH_SYSTEM,
+        model: model.id, max_tokens: 16000, system: system,
         output_config: { effort: "high" }, tools: researchTools(model), messages: messages
       }, model).then(function (resp) {
         assistantBlocks = assistantBlocks.concat((resp.content || []).filter(function (b) { return b.type !== "fallback"; }));
         (resp.content || []).forEach(function (b) {
           if (b.type === "server_tool_use" && b.input) {
-            state.research.queries.push(b.name === "web_fetch" ? "Lecture : " + b.input.url : "Recherche : « " + b.input.query + " »");
+            rs.queries.push(b.name === "web_fetch" ? "Lecture : " + b.input.url : "Recherche : « " + b.input.query + " »");
           }
         });
-        var nSources = countSources(assistantBlocks);
-        setResearchStatus("Tour " + turns + " : " + state.research.queries.length + " recherche(s)/lecture(s), " + nSources + " source(s) trouvée(s)…");
+        rs.status = "Tour " + turns + " : " + rs.queries.length + " recherche(s)/lecture(s), " + countSources(assistantBlocks) + " source(s) trouvée(s)…";
         render();
         if (resp.stop_reason === "pause_turn" && turns < RESEARCH_MAX_TURNS) return step();
         if (resp.stop_reason === "refusal") throw new Error("Le modèle a refusé de traiter cette demande.");
-        return { resp: resp, model: resp.model || model.id };
+        return { blocks: assistantBlocks, model: resp.model || model.id, stopReason: resp.stop_reason };
       });
     }
+    return step().then(function (res) { clearInterval(timer); rs.running = false; return res; },
+      function (e) { clearInterval(timer); rs.running = false; rs.error = e && e.message ? e.message : String(e); render(); throw e; });
+  }
 
-    step().then(function (res) {
-      clearInterval(timer);
-      var record = buildResearchRecord(assistantBlocks, res.model, res.resp.stop_reason);
+  function runResearch() {
+    var settings = aiSettings();
+    if (!settings.apiKey) { state.ai.tab = "perso"; state.ai.settingsOpen = true; render(); return; }
+    var ctx = state.live.contexteIA;
+    if (!ctx || !ctx.marche) { state.research.error = "Le dossier de la séance n'est pas disponible."; render(); return; }
+    var userContent = "Date du jour : " + todayIso() + ". Dernière séance disponible : " + state.live.asOfDate + ".\n\n" +
+      ctx.marche + (settings.includePortfolio ? "\n" + buildPersonalSection() : "") + buildDocumentsSection() +
+      "\n\nMène tes recherches puis présente les 2 valeurs retenues.";
+    state.research.openId = null;
+    webResearch(state.research, "research", RESEARCH_SYSTEM, userContent).then(function (res) {
+      var record = buildResearchRecord(res.blocks, res.model, res.stopReason);
       var hist = researchHistory();
       hist.unshift(record);
       writeJsonStorage(RESEARCH_KEY, hist.slice(0, 50));
-      state.research = { running: false, status: "", queries: [], error: null, openId: record.id };
+      state.research.openId = record.id;
       render();
-    }).catch(function (e) {
-      clearInterval(timer);
-      state.research.running = false;
-      state.research.error = e && e.message ? e.message : String(e);
-      render();
-    });
+    }, function () { /* erreur déjà affichée */ });
   }
 
   function countSources(blocks) {
@@ -1543,16 +1539,17 @@
     return Object.keys(urls).length;
   }
 
-  function buildResearchRecord(blocks, model, stopReason) {
-    // Le rapport final = blocs texte après le dernier résultat d'outil.
+  // Rapport final (blocs texte après le dernier outil), bloc JSON de fin
+  // extrait et retiré du texte, sources web et requêtes effectuées.
+  function extractReport(blocks, stopReason) {
     var lastTool = -1;
     blocks.forEach(function (b, i) { if (/_tool_result$/.test(b.type) || b.type === "server_tool_use") lastTool = i; });
     var text = blocks.slice(lastTool + 1).filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("");
     if (!text.trim()) text = blocks.filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("");
-    var winners = [];
+    var json = null;
     var m = text.match(/```json\s*([\s\S]*?)```\s*$/) || text.match(/```json\s*([\s\S]*?)```/);
     if (m) {
-      try { winners = (JSON.parse(m[1]).winners || []).slice(0, 2); } catch (e) { winners = []; }
+      try { json = JSON.parse(m[1]); } catch (e) { json = null; }
       text = text.replace(m[0], "").trim();
     }
     if (stopReason === "max_tokens") text += "\n\n*(Rapport tronqué : limite de longueur atteinte.)*";
@@ -1564,18 +1561,41 @@
         if (r.url && !sources[r.url]) sources[r.url] = { url: r.url, title: r.title || r.url, age: r.page_age || null };
       });
     });
-    winners = winners.map(function (w) {
+    return {
+      text: text, json: json,
+      sources: Object.keys(sources).map(function (k) { return sources[k]; }).sort(function (a, b) { return (b.cite ? 1 : 0) - (a.cite ? 1 : 0); }),
+      queries: blocks.filter(function (b) { return b.type === "server_tool_use" && b.input; }).map(function (b) { return b.name === "web_fetch" ? b.input.url : b.input.query; })
+    };
+  }
+
+  function buildResearchRecord(blocks, model, stopReason) {
+    var rep = extractReport(blocks, stopReason);
+    var winners = ((rep.json && rep.json.winners) || []).slice(0, 2).map(function (w) {
       var s = (state.live.stocks || []).filter(function (x) { return x.symbole === w.symbole; })[0];
       return { symbole: w.symbole, nom: w.nom || (s && s.nom) || w.symbole, conviction: w.conviction, these: w.these, prix: s ? s.cours_cloture : null };
     });
-    var queries = blocks.filter(function (b) { return b.type === "server_tool_use" && b.input; })
-      .map(function (b) { return b.name === "web_fetch" ? b.input.url : b.input.query; });
     return {
       id: Date.now().toString(36), at: new Date().toISOString(), asOfDate: state.live.asOfDate, model: model,
-      text: text, winners: winners,
-      sources: Object.keys(sources).map(function (k) { return sources[k]; }).sort(function (a, b) { return (b.cite ? 1 : 0) - (a.cite ? 1 : 0); }),
-      queries: queries
+      text: rep.text, winners: winners, sources: rep.sources, queries: rep.queries
     };
+  }
+
+  function renderSourcesList(record) {
+    if (!record.sources.length) return null;
+    return el("details", { class: "research-sources small" }, [
+      el("summary", {}, [record.sources.length + " source(s) web consultée(s) · " + record.queries.length + " recherche(s)"]),
+      el("ul", {}, record.sources.slice(0, 60).map(function (s) {
+        var safe = /^https?:\/\//i.test(s.url);
+        return el("li", {}, [safe ? el("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, [s.title]) : s.title,
+          s.cite ? el("span", { class: "muted" }, [" · citée"]) : null, s.age ? el("span", { class: "muted" }, [" · " + s.age]) : null]);
+      }))
+    ]);
+  }
+
+  function renderResearchProgress(rs, idPrefix) {
+    var wrap = el("div", {}, [el("p", { class: "muted small ai-status" }, [el("span", { id: idPrefix + "-status" }, [rs.status]), " · ", el("span", { id: idPrefix + "-elapsed" }, [Math.round((Date.now() - rs.startedAt) / 1000) + " s"])])]);
+    if (rs.queries.length) wrap.appendChild(el("ul", { class: "research-queries small muted" }, rs.queries.slice(-8).map(function (q) { return el("li", {}, [q]); })));
+    return wrap;
   }
 
   // Performance moyenne des valeurs de la cote entre deux séances, comme
@@ -1624,15 +1644,7 @@
       record.winners.length ? null : el("p", { class: "small concentration-warning" }, ["Les 2 valeurs n'ont pas pu être extraites automatiquement : voir le rapport ci-dessous."]),
       el("div", { class: "ai-output", html: renderMarkdown(record.text) })
     ]);
-    if (record.sources.length) {
-      wrap.appendChild(el("details", { class: "research-sources small" }, [
-        el("summary", {}, [record.sources.length + " source(s) web consultée(s) · " + record.queries.length + " recherche(s)"]),
-        el("ul", {}, record.sources.slice(0, 60).map(function (s) {
-          var safe = /^https?:\/\//i.test(s.url);
-          return el("li", {}, [safe ? el("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, [s.title]) : s.title, s.cite ? el("span", { class: "muted" }, [" · citée"]) : null, s.age ? el("span", { class: "muted" }, [" · " + s.age]) : null]);
-        }))
-      ]));
-    }
+    wrap.appendChild(renderSourcesList(record) || el("span"));
     wrap.appendChild(el("div", { class: "ai-foot" }, [
       el("span", { class: "muted small" }, ["Recherche du " + new Date(record.at).toLocaleString("fr-FR") + " par " + aiModelLabel(record.model) + ". "]),
       el("button", { class: "link-btn small", onclick: function () {
@@ -1691,10 +1703,7 @@
         settings.apiKey ? el("span", { class: "muted small" }, ["Profil, portefeuille et documents cochés sont pris en compte."]) : null
       ]));
     }
-    if (rs.running) {
-      box.appendChild(el("p", { class: "muted small ai-status" }, [el("span", { id: "research-status" }, [rs.status]), " · ", el("span", { id: "research-elapsed" }, ["0 s"])]));
-      if (rs.queries.length) box.appendChild(el("ul", { class: "research-queries small muted" }, rs.queries.slice(-8).map(function (q) { return el("li", {}, [q]); })));
-    }
+    if (rs.running) box.appendChild(renderResearchProgress(rs, "research"));
     if (rs.error) box.appendChild(el("p", { class: "small concentration-warning" }, ["⚠ " + rs.error]));
     var shown = hist.filter(function (r) { return r.id === rs.openId; })[0] || (!rs.running && hist[0]);
     if (shown && !rs.running) {
@@ -1705,6 +1714,260 @@
     if (h) box.appendChild(h);
     if (shown) box.appendChild(el("p", { class: "disclaimer" }, ["Pistes d'investissement générées par une IA à partir de sources web et des données de l'outil : vérifiez les sources, elles peuvent contenir des erreurs. Ce n'est pas un conseil en investissement."]));
     return box;
+  }
+
+  // ------------------------------------------- opportunités hors actions
+  // Onglet dédié aux autres placements du marché financier régional :
+  // obligations cotées à la BRVM (cote du jour), et recherche IA sur le web
+  // des opportunités en cours (emprunts obligataires en souscription,
+  // introductions en bourse, sukuk, titres publics, OPCVM...).
+  var OPPS_KEY = "brvm-conseil-opportunities-v1";
+
+  var OPPS_SYSTEM = [
+    "Tu es conseiller en placements spécialisé sur le marché financier régional de l'UMOA : BRVM (actions, obligations), marché des titres publics (UMOA-Titres), OPCVM agréés par l'AMF-UMOA. Ta mission : identifier, à date, les meilleures opportunités d'investissement HORS ACTIONS déjà cotées, accessibles à un investisseur particulier via une SGI ou une banque.",
+    "",
+    "Catégories à couvrir par tes recherches web (outils web_search et web_fetch) :",
+    "1. Emprunts obligataires par appel public à l'épargne en cours de souscription ou annoncés (États, institutions régionales, entreprises) : taux, durée, différé, mode d'amortissement, période de souscription, montant minimum, garanties, notation éventuelle, SGI chef de file.",
+    "2. Obligations déjà cotées à la BRVM : la cote du jour est fournie (taux facial, échéance, cours). Repère les lignes intéressantes, en rappelant que beaucoup sont amortissables (le cours peut refléter un nominal partiellement remboursé) et que le marché secondaire est peu liquide.",
+    "3. Introductions en bourse, augmentations de capital et offres publiques en cours ou annoncées à la BRVM.",
+    "4. Sukuk et obligations durables (vertes, sociales).",
+    "5. Titres publics (bons et obligations assimilables du Trésor) et leurs taux récents d'adjudication, avec les conditions d'accès pour un particulier.",
+    "6. OPCVM (FCP, SICAV) agréés de la zone, avec leurs performances publiées.",
+    "",
+    "Méthode :",
+    "- Privilégie les sources officielles et récentes (BRVM, AMF-UMOA, UMOA-Titres, BCEAO, émetteurs, SGI, presse financière régionale) ; relève la date de chacune.",
+    "- Vérifie que chaque offre est encore ouverte : écarte ou signale clairement les souscriptions closes.",
+    "- Compare au rendement attendu des actions (dividendes) et à l'inflation de la zone si tu trouves des chiffres sourcés.",
+    "- Adapte la sélection au profil de risque et au portefeuille de l'investisseur s'ils sont fournis (diversification, horizon).",
+    "",
+    "Règles :",
+    "- N'invente jamais un taux, une date, un montant ou une source. Toute donnée chiffrée doit venir d'une source citée et datée.",
+    "- Explique les risques propres à chaque placement : risque de l'émetteur (souverain, régional, privé, titrisation), liquidité (revente difficile avant l'échéance), remboursement anticipé, taux variable. La fiscalité des revenus varie selon le pays : invite à la vérifier.",
+    "- Ce sont des pistes argumentées, pas un conseil en investissement réglementé.",
+    "",
+    "Format de la réponse finale (Markdown, en français) :",
+    "## En bref",
+    "## Opportunités du moment",
+    "Pour chacune (6 maximum, de la plus intéressante à la moins intéressante pour cet investisseur) : description, rendement et conditions sourcés, date limite éventuelle, risques, comment souscrire.",
+    "## Obligations cotées à regarder",
+    "## Ce qu'il faut savoir avant d'investir",
+    "## Sources consultées",
+    "",
+    "Termine OBLIGATOIREMENT par un bloc de code json (et rien après) :",
+    "```json",
+    "{\"opportunites\": [{\"categorie\": \"Emprunt obligataire en souscription|Obligation cotée|Introduction en bourse|Augmentation de capital|Sukuk|Titre public|OPCVM|Autre\", \"nom\": \"...\", \"emetteur\": \"...\", \"rendement\": \"ex. 6,95 % brut par an\", \"duree\": \"...\", \"date_limite\": \"AAAA-MM-JJ ou chaîne vide\", \"montant_minimum\": \"...\", \"risque\": \"faible|modéré|élevé\", \"liquidite\": \"...\", \"pourquoi\": \"une phrase\", \"source\": \"url\"}]}",
+    "```"
+  ].join("\n");
+
+  state.opps = { running: false, status: "", queries: [], error: null, openId: null, startedAt: null };
+  state.ui.bonds = { search: "", type: "TOUS", pays: "TOUS", echeance: "TOUTES", sort: "taux", dir: -1, shown: 40 };
+
+  function oppsHistory() { return readJsonStorage(OPPS_KEY, []); }
+
+  function bondsAsText() {
+    var o = state.live.obligations;
+    if (!o || !o.lignes || !o.lignes.length) return "(cote des obligations indisponible)";
+    return ["## Cote des obligations BRVM en vie (code | libellé | type | pays | taux facial % | échéance | cours FCFA | dernier coupon)"].concat(o.lignes.map(function (b) {
+      return [b.code, b.nom, b.type, b.pays || "—", b.taux_facial_pct != null ? b.taux_facial_pct : "variable", b.annee_echeance || "—", b.cours, (b.dernier_coupon_date || "—") + " " + (b.dernier_coupon_valeur != null ? b.dernier_coupon_valeur : "")].join(" | ");
+    })).join("\n");
+  }
+
+  function runOpportunities() {
+    var settings = aiSettings();
+    if (!settings.apiKey) { state.ui.page = "actions"; state.ai.tab = "perso"; state.ai.settingsOpen = true; render(); return; }
+    var s = state.live.stats || {};
+    var userContent = "Date du jour : " + todayIso() + ". Dernière séance BRVM : " + state.live.asOfDate +
+      " (" + s.hausses + " hausses, " + s.baisses + " baisses ; " + (state.live.syntheseDuJour || "") + ").\n\n" +
+      bondsAsText() + "\n" + (settings.includePortfolio ? buildPersonalSection() : "\n## Investisseur\nProfil de risque : " + labelForProfile(state.user.riskProfile) + ".") +
+      buildDocumentsSection() + "\n\nMène tes recherches puis présente les opportunités du moment hors actions.";
+    state.opps.openId = null;
+    webResearch(state.opps, "opps", OPPS_SYSTEM, userContent).then(function (res) {
+      var rep = extractReport(res.blocks, res.stopReason);
+      var record = {
+        id: Date.now().toString(36), at: new Date().toISOString(), asOfDate: state.live.asOfDate, model: res.model,
+        text: rep.text, items: ((rep.json && rep.json.opportunites) || []).slice(0, 6), sources: rep.sources, queries: rep.queries
+      };
+      var hist = oppsHistory();
+      hist.unshift(record);
+      writeJsonStorage(OPPS_KEY, hist.slice(0, 30));
+      state.opps.openId = record.id;
+      render();
+    }, function () { /* erreur déjà affichée */ });
+  }
+
+  var RISK_TONE = { faible: "good", "modéré": "warning", modere: "warning", "élevé": "critical", eleve: "critical" };
+
+  function renderOppCard(o) {
+    var expired = o.date_limite && /^\d{4}-\d{2}-\d{2}$/.test(o.date_limite) && o.date_limite < todayIso();
+    var safe = o.source && /^https?:\/\//i.test(o.source);
+    return el("div", { class: "winner-card opp-card" + (expired ? " doc-off" : "") }, [
+      el("div", { class: "winner-head" }, [
+        el("span", { class: "badge tone-neutral" }, [o.categorie || "Opportunité"]),
+        o.risque ? el("span", { class: "badge tone-" + (RISK_TONE[o.risque] || "neutral") }, ["Risque " + o.risque]) : null
+      ]),
+      el("div", { class: "winner-name" }, [o.nom || "—"]),
+      o.emetteur ? el("div", { class: "small muted" }, [o.emetteur]) : null,
+      el("div", { class: "opp-facts small" }, [
+        o.rendement ? el("span", {}, [el("b", {}, [o.rendement])]) : null,
+        o.duree ? el("span", {}, ["Durée : " + o.duree]) : null,
+        o.montant_minimum ? el("span", {}, ["Minimum : " + o.montant_minimum]) : null,
+        o.date_limite ? el("span", { class: expired ? "down" : "" }, [(expired ? "Clôturée le " : "Jusqu'au ") + o.date_limite.split("-").reverse().join("/")]) : null
+      ]),
+      o.pourquoi ? el("p", { class: "small winner-these" }, [o.pourquoi]) : null,
+      o.liquidite ? el("div", { class: "small muted" }, ["Liquidité : " + o.liquidite]) : null,
+      safe ? el("a", { class: "small", href: o.source, target: "_blank", rel: "noopener noreferrer" }, ["Source"]) : null
+    ]);
+  }
+
+  function renderOppsResearch() {
+    var settings = aiSettings(), rs = state.opps, hist = oppsHistory();
+    var box = el("section", { class: "panel research-panel" }, [
+      el("div", { class: "ai-head" }, [el("h2", {}, ["Recherche IA : opportunités hors actions"])]),
+      el("p", { class: "muted small", style: "margin-top:-4px" }, [
+        "L'IA recherche sur le web les placements du moment : emprunts obligataires en souscription, obligations cotées, introductions en bourse et augmentations de capital, sukuk, titres publics, OPCVM. Elle les compare en tenant compte de votre profil et de votre portefeuille, et cite ses sources. ",
+        "Durée : quelques minutes. Coût indicatif : 0,50 à 2 $ par recherche avec Opus."
+      ]),
+      el("div", { class: "ai-actions" }, [
+        el("button", { class: "btn", disabled: rs.running ? "disabled" : null, onclick: runOpportunities }, [
+          rs.running ? "Recherche en cours…" : (settings.apiKey ? "🔎 Rechercher les opportunités" : "Configurer la clé API pour lancer la recherche")
+        ])
+      ])
+    ]);
+    if (rs.running) box.appendChild(renderResearchProgress(rs, "opps"));
+    if (rs.error) box.appendChild(el("p", { class: "small concentration-warning" }, ["⚠ " + rs.error]));
+    var shown = hist.filter(function (r) { return r.id === rs.openId; })[0] || (!rs.running && hist[0]);
+    if (shown && !rs.running) {
+      if (shown.items.length) box.appendChild(el("div", { class: "winners" }, shown.items.map(renderOppCard)));
+      box.appendChild(el("div", { class: "ai-output", html: renderMarkdown(shown.text) }));
+      box.appendChild(renderSourcesList(shown) || el("span"));
+      box.appendChild(el("div", { class: "ai-foot" }, [
+        el("span", { class: "muted small" }, ["Recherche du " + new Date(shown.at).toLocaleString("fr-FR") + " par " + aiModelLabel(shown.model) + ". "]),
+        el("button", { class: "link-btn small", onclick: function () {
+          downloadBlob("opportunites-brvm-" + shown.at.slice(0, 10) + ".md", "text/markdown;charset=utf-8",
+            "# Opportunités hors actions — " + new Date(shown.at).toLocaleDateString("fr-FR") + "\n\n" + shown.text + "\n\n## Liens\n" + shown.sources.map(function (s) { return "- [" + s.title + "](" + s.url + ")"; }).join("\n"));
+        } }, ["Télécharger (.md)"])
+      ]));
+    }
+    if (hist.length > 1) {
+      box.appendChild(el("div", { class: "research-history" }, [el("div", { class: "muted small tx-title" }, ["Recherches précédentes"])].concat(
+        hist.slice(0, 10).map(function (r) {
+          return el("button", { class: "link-btn small opp-hist", onclick: function () { state.opps.openId = r.id; render(); } },
+            [new Date(r.at).toLocaleDateString("fr-FR") + " — " + r.items.length + " opportunité(s)" + (shown && r.id === shown.id ? " (affichée)" : "")]);
+        }))));
+    }
+    if (shown) box.appendChild(el("p", { class: "disclaimer" }, ["Informations collectées par une IA sur le web : vérifiez les conditions auprès de l'émetteur ou de votre SGI avant toute souscription (dates, taux, fiscalité). Ce n'est pas un conseil en investissement."]));
+    return box;
+  }
+
+  function renderBonds() {
+    // Les séances archivées avant l'ajout des obligations n'en ont pas : on
+    // affiche alors la cote du jour, en le précisant.
+    var src = state.market.obligations ? state.market : state.live;
+    var o = src.obligations;
+    var f = state.ui.bonds;
+    var box = el("section", { class: "panel market-panel" }, [el("h2", {}, ["Obligations cotées à la BRVM" + (o ? " (" + o.lignes.length + " en vie)" : "")])]);
+    if (!o || !o.lignes.length) {
+      box.appendChild(el("p", { class: "muted small" }, ["La cote des obligations sera disponible après la prochaine mise à jour."]));
+      return box;
+    }
+    box.appendChild(el("p", { class: "muted small", style: "margin:-8px 0 12px" }, [
+      "Cote du " + (src.asOfLabel || "") + (src !== state.market ? " (pas de cote archivée pour la séance consultée)" : "") + ". Le taux affiché est le taux facial (coupon annuel en % du nominal). ",
+      "Beaucoup d'obligations sont amortissables : un cours inférieur à 10 000 FCFA reflète souvent un nominal déjà partiellement remboursé, pas une décote. ",
+      "Le rendement réel dépend du tableau d'amortissement (voir la note d'information) ; le marché secondaire est peu liquide."
+    ]));
+    var types = Array.from(new Set(o.lignes.map(function (b) { return b.type; }))).sort();
+    var pays = Array.from(new Set(o.lignes.map(function (b) { return b.pays; }).filter(Boolean))).sort();
+    var search = el("input", { class: "input", type: "search", placeholder: "Rechercher (code, émetteur)…", value: f.search });
+    search.addEventListener("input", debounce(function () { f.search = search.value; f.shown = 40; render(); }, 200));
+    function sel(key, options) {
+      var s = el("select", { class: "input" }, options.map(function (x) { return el("option", { value: x[0] }, [x[1]]); }));
+      s.value = f[key];
+      s.addEventListener("change", function () { f[key] = s.value; f.shown = 40; render(); });
+      return s;
+    }
+    var year = new Date().getFullYear();
+    box.appendChild(el("div", { class: "filters-row" }, [
+      search,
+      sel("type", [["TOUS", "Tous types"]].concat(types.map(function (t) { return [t, t]; }))),
+      sel("pays", [["TOUS", "Tous pays / émetteurs"]].concat(pays.map(function (p) { return [p, p]; }))),
+      sel("echeance", [["TOUTES", "Toutes échéances"], [String(year + 1), "Jusqu'à " + (year + 1)], [String(year + 3), "Jusqu'à " + (year + 3)], [String(year + 5), "Jusqu'à " + (year + 5)], ["LONG", "Après " + (year + 5)]])
+    ]));
+    var rows = o.lignes.filter(function (b) {
+      if (f.type !== "TOUS" && b.type !== f.type) return false;
+      if (f.pays !== "TOUS" && b.pays !== f.pays) return false;
+      if (f.echeance === "LONG") { if (!(b.annee_echeance > year + 5)) return false; }
+      else if (f.echeance !== "TOUTES" && !(b.annee_echeance <= Number(f.echeance))) return false;
+      if (f.search) {
+        var q = f.search.toLowerCase();
+        if ((b.code + " " + b.nom).toLowerCase().indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+    var key = f.sort, dir = f.dir;
+    rows.sort(function (a, b) {
+      var av = key === "taux" ? a.taux_facial_pct : key === "echeance" ? a.annee_echeance : key === "cours" ? a.cours : a.code;
+      var bv = key === "taux" ? b.taux_facial_pct : key === "echeance" ? b.annee_echeance : key === "cours" ? b.cours : b.code;
+      if (av == null) av = -Infinity; if (bv == null) bv = -Infinity;
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+    function th(label, k, cls) {
+      var active = f.sort === k;
+      return el("th", { class: "sortable" + (active ? " active" : "") + (cls ? " " + cls : ""), onclick: function () {
+        if (f.sort === k) f.dir *= -1; else { f.sort = k; f.dir = k === "taux" ? -1 : 1; }
+        render();
+      } }, [label + (active ? (f.dir === 1 ? " ▴" : " ▾") : "")]);
+    }
+    var tableWrap = el("div", { class: "table-scroll" });
+    tableWrap.appendChild(el("table", { class: "data-table bonds-table" }, [
+      el("thead", {}, [el("tr", {}, [th("Code", "code"), el("th", {}, ["Libellé"]), el("th", { class: "col-secteur" }, ["Type"]),
+        th("Taux", "taux"), th("Échéance", "echeance"), th("Cours", "cours"), el("th", { class: "col-tendance" }, ["Dernier coupon"])])]),
+      el("tbody", {}, rows.slice(0, f.shown).map(function (b) {
+        return el("tr", {}, [
+          el("td", { class: "mono" }, [b.code]),
+          el("td", { class: "bond-name" }, [b.nom].concat(b.labels.map(function (l) { return el("span", { class: "badge tone-good-soft bond-label" }, [l]); }))),
+          el("td", { class: "small col-secteur" }, [b.type + (b.pays ? " · " + b.pays : "")]),
+          el("td", { class: "num" }, [b.taux_facial_pct != null ? fmtNum(b.taux_facial_pct, 2) + " %" : "variable"]),
+          el("td", { class: "num" }, [b.annee_echeance || "—"]),
+          el("td", { class: "num" }, [fmtNum(b.cours, 0)]),
+          el("td", { class: "num small muted col-tendance" }, [b.dernier_coupon_date ? b.dernier_coupon_date + " · " + fmtNum(b.dernier_coupon_valeur, 2) : "—"])
+        ]);
+      }))
+    ]));
+    box.appendChild(tableWrap);
+    if (!rows.length) box.appendChild(el("p", { class: "muted small" }, ["Aucune obligation ne correspond à ces filtres."]));
+    if (rows.length > f.shown) box.appendChild(el("button", { class: "link-btn", style: "margin-top:10px", onclick: function () { f.shown += 60; render(); } },
+      ["Afficher plus (" + (rows.length - f.shown) + " restantes)"]));
+    box.appendChild(el("p", { class: "muted small" }, [o.echues + " obligation(s) échue(s) non affichée(s). Source : brvm.org, cote des obligations."]));
+    return box;
+  }
+
+  function renderOppsGuide() {
+    var items = [
+      ["Emprunts obligataires (APE)", "Les États, institutions régionales et entreprises lèvent régulièrement des fonds par appel public à l'épargne : souscription auprès d'une SGI pendant une période donnée, coupon fixe, puis cotation à la BRVM."],
+      ["Obligations cotées", "Achetables à la BRVM via une SGI. Coupons réguliers, souvent amortissables. Le marché secondaire est peu liquide : prévoir de les conserver."],
+      ["Introductions en bourse", "Une société entre en bourse ou augmente son capital : souscription des actions nouvelles pendant l'offre, souvent avec un prix fixé à l'avance."],
+      ["Sukuk", "Titres conformes à la finance islamique, adossés à des actifs ; émis notamment par des États de la zone."],
+      ["Titres publics", "Bons et obligations du Trésor émis par adjudication (UMOA-Titres) ; accessibles aux particuliers via une banque ou une SGI, généralement avec des montants minimum plus élevés."],
+      ["OPCVM (FCP, SICAV)", "Fonds gérés par des sociétés de gestion agréées par l'AMF-UMOA : diversification immédiate, adaptés aux petits montants ; frais de gestion à comparer."]
+    ];
+    return el("section", { class: "panel" }, [
+      el("h2", {}, ["Comprendre ces placements"]),
+      el("div", { class: "guide-list" }, items.map(function (it) { return el("div", {}, [el("b", { class: "small" }, [it[0]]), el("p", { class: "small muted" }, [it[1]])]); })),
+      el("p", { class: "disclaimer" }, ["Avant toute souscription : lire la note d'information visée par l'AMF-UMOA, vérifier la fiscalité applicable dans votre pays et les frais de votre SGI."])
+    ]);
+  }
+
+  function renderNav() {
+    var pages = [["actions", "Actions & portefeuille"], ["opportunites", "Opportunités hors actions"]];
+    return el("nav", { class: "page-tabs", role: "tablist" }, pages.map(function (p) {
+      var active = state.ui.page === p[0];
+      return el("button", { class: "page-tab" + (active ? " active" : ""), role: "tab", "aria-selected": active ? "true" : "false", onclick: function () {
+        state.ui.page = p[0];
+        try { history.replaceState(null, "", p[0] === "actions" ? location.pathname + location.search : "#" + p[0]); } catch (e) { /* ignore */ }
+        render();
+        window.scrollTo({ top: 0 });
+      } }, [p[1]]);
+    }));
   }
 
   // ---------------------------------------------------- documents d'analyse
@@ -2189,8 +2452,15 @@
     root.appendChild(renderHeader());
     var main = el("main", { class: "layout" });
     if (state.view.date) root.appendChild(renderArchiveBanner());
-    var left = el("div", { class: "col-main" }, [renderSynthese(), renderPortfolio(), renderAiPanel(), renderResearchPanel(), renderDocuments(), renderMethodology(), renderMarketTable()]);
-    var right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderConcentration(), renderWatchlist(), renderArchives()]);
+    root.appendChild(renderNav());
+    var left, right;
+    if (state.ui.page === "opportunites") {
+      left = el("div", { class: "col-main" }, [renderOppsResearch(), renderBonds()]);
+      right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderOppsGuide(), renderDocuments()]);
+    } else {
+      left = el("div", { class: "col-main" }, [renderSynthese(), renderPortfolio(), renderAiPanel(), renderResearchPanel(), renderDocuments(), renderMethodology(), renderMarketTable()]);
+      right = el("div", { class: "col-side" }, [renderProfileSwitcher(), renderConcentration(), renderWatchlist(), renderArchives()]);
+    }
     main.appendChild(left);
     main.appendChild(right);
     root.appendChild(main);
@@ -2255,6 +2525,7 @@
     try {
       state.archiveIndex = JSON.parse(document.getElementById("archive-index").textContent) || [];
     } catch (e) { state.archiveIndex = []; }
+    state.ui.page = location.hash === "#opportunites" ? "opportunites" : "actions";
     state.user = loadUserState();
     if (!state.user.riskProfile) state.user.riskProfile = "equilibre";
     if (!state.user.portfolio) state.user.portfolio = [];

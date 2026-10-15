@@ -203,6 +203,30 @@ listées.
   période. C'est le meilleur moyen de juger, dans la durée, si ces
   recommandations méritent ta confiance.
 
+## Onglet « Opportunités hors actions »
+
+Un second onglet (lien direct : `index.html#opportunites`) rassemble les
+autres placements du marché financier régional.
+
+- **Obligations cotées à la BRVM** : cote du jour récupérée sur
+  brvm.org/fr/cours-obligations (`bonds.py`), émissions échues retirées,
+  classées par type (État, institution régionale, entreprise, titrisation
+  FCTC, sukuk) et par pays, avec repérage des obligations durables, diaspora
+  et à taux variable. Filtres par type, pays, échéance et recherche ; tri par
+  taux facial, échéance ou cours. Seul le **taux facial** est indiqué : la
+  cote ne publie ni le nominal restant ni le tableau d'amortissement (un
+  cours de 4 000 FCFA reflète souvent un titre déjà remboursé aux 3/5, pas
+  une décote), donc aucun rendement n'est calculé.
+- **Recherche IA d'opportunités** : comme la recherche de valeurs, l'IA
+  cherche sur le web les placements du moment — emprunts obligataires en
+  souscription (taux, durée, période, minimum, SGI), introductions en bourse
+  et augmentations de capital, sukuk, titres publics (UMOA-Titres), OPCVM —
+  les croise avec la cote des obligations, ton profil et ton portefeuille,
+  et présente jusqu'à 6 opportunités sourcées (offres clôturées signalées).
+  Les recherches sont conservées (et incluses dans la sauvegarde).
+- **Comprendre ces placements** : rappel des caractéristiques de chaque
+  famille de placement.
+
 ## Mes documents d'analyse
 
 Le panneau **Mes documents d'analyse** accepte tes propres sources : PDF
@@ -253,6 +277,7 @@ podcasts).
   l'historique git (usage ponctuel).
 - `archives/` — une archive JSON par séance + `index.json`.
 - `ai_analysis.py` — dossier de séance pour l'IA et analyse automatique.
+- `bonds.py` — mise en forme de la cote des obligations.
 - `backtest.py` — mesure de la fiabilité des signaux sur l'historique.
 - `sectors.json` — table secteur/pays des ~47 valeurs BRVM.
 - `history.json` — historique quotidien cumulé des cours (un point par
@@ -300,7 +325,7 @@ méthodologie du dashboard ; elle est aussi transmise à l'IA. L'historique
 
 C'est un outil d'aide à la décision basé sur des règles quantitatives
 transparentes — pas un conseil en investissement réglementé, et ça ne
-remplace pas l'avis d'un conseiller agréé auprès du CREPMF.
+remplace pas l'avis d'un conseiller agréé par l'AMF-UMOA (ex-CREPMF).
 
 ## Si le scraper casse
 

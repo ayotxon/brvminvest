@@ -24,6 +24,7 @@ from pathlib import Path
 import ai_analysis
 import archives
 import backtest
+import bonds
 
 HERE = Path(__file__).resolve().parent
 
@@ -110,10 +111,11 @@ def main():
     stocks_path = HERE / "today_stocks.json"
     indices_path = HERE / "today_indices.json"
     page_date_path = HERE / "page_date.txt"
+    bonds_path = HERE / "today_bonds.json"
 
     run([sys.executable, str(HERE / "scrape_brvm.py"),
          "--stocks-out", str(stocks_path), "--indices-out", str(indices_path),
-         "--page-date-out", str(page_date_path)])
+         "--page-date-out", str(page_date_path), "--bonds-out", str(bonds_path)])
 
     # La séance traitée est celle qu'affiche brvm.org, pas la date de
     # l'horloge : les passages planifiés de GitHub Actions peuvent avoir
@@ -160,6 +162,13 @@ def main():
         json.dump(market_data["history"], f, ensure_ascii=False)
     with open(intraday_path, "w", encoding="utf-8") as f:
         json.dump(market_data["intraday"], f, ensure_ascii=False)
+
+    # Obligations cotées (onglet Opportunités).
+    try:
+        with open(bonds_path, encoding="utf-8") as f:
+            market_data["obligations"] = bonds.build_bonds(json.load(f), session.year)
+    except (OSError, ValueError) as e:
+        print(f"Obligations ignorées : {e}", file=sys.stderr)
 
     # Dossier de séance pour l'IA (embarqué dans la page et l'archive) et
     # analyse IA automatique, une fois par séance après la clôture.

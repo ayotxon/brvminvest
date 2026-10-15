@@ -168,6 +168,36 @@ def scrape_stocks():
     return rows_out, page_date
 
 
+BONDS_URL = "https://www.brvm.org/fr/cours-obligations/0"
+
+
+def scrape_bonds():
+    """Cote des obligations (libellé, dates, cours, coupon couru, dernier
+    coupon). Voir bonds.py pour l'exploitation de ces lignes."""
+    soup = fetch(BONDS_URL)
+    table, headers = find_table(soup, ["code obligation", "nom"])
+    if table is None:
+        raise RuntimeError("Tableau des obligations introuvable sur " + BONDS_URL + " — en-têtes trouvés : " +
+                           repr([header_cells(t) for t in soup.find_all("table")][:6]))
+    cols = map_columns(headers, {
+        "code": ["code"],
+        "nom": ["nom"],
+        "date_emission": ["emission"],
+        "date_maturite": ["maturite"],
+        "cours": ["cours"],
+        "coupon_couru": ["couru"],
+        "dernier_paiement": ["dernier paiement"],
+    })
+    rows_out = []
+    for tr in data_rows(table):
+        cells = tr.find_all(["td", "th"])
+        code = cell_text(cells, cols.get("code"))
+        if not code:
+            continue
+        rows_out.append({k: cell_text(cells, i) for k, i in cols.items()})
+    return rows_out
+
+
 def _index_columns(headers):
     """Repère les colonnes d'un tableau d'indices brvm.org. Les libellés
     actuels sont « Nom | Fermeture précédente | Fermeture | Variation (%) |
@@ -247,6 +277,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stocks-out", required=True)
     ap.add_argument("--indices-out", required=True)
+    ap.add_argument("--bonds-out", default=None, help="Fichier JSON où écrire la cote des obligations (optionnel)")
     ap.add_argument("--page-date-out", default=None, help="Fichier texte où écrire la date affichée sur la page (optionnel)")
     args = ap.parse_args()
 
@@ -259,6 +290,18 @@ def main():
     with open(args.indices_out, "w", encoding="utf-8") as f:
         json.dump(indices, f, ensure_ascii=False)
     print(f"OK: {len(indices)} indices écrits dans {args.indices_out}", file=sys.stderr)
+
+    if args.bonds_out:
+        # Les obligations sont un complément : un échec ne bloque pas la mise
+        # à jour des actions (on écrit alors une liste vide).
+        try:
+            bonds = scrape_bonds()
+        except Exception as e:  # noqa: BLE001
+            print(f"Obligations non récupérées : {e}", file=sys.stderr)
+            bonds = []
+        with open(args.bonds_out, "w", encoding="utf-8") as f:
+            json.dump(bonds, f, ensure_ascii=False)
+        print(f"OK: {len(bonds)} obligations écrites dans {args.bonds_out}", file=sys.stderr)
 
     if args.page_date_out:
         with open(args.page_date_out, "w", encoding="utf-8") as f:

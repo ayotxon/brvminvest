@@ -1,5 +1,6 @@
 today_stocks.json
 today_indices.json
+today_bonds.json
 page_date.txt
 market_data.json
 .venv/
