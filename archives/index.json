@@ -1,5 +1,15 @@
 [
  {
+  "date": "2026-10-16",
+  "label": "Vendredi 16 octobre 2026",
+  "lastUpdate": "2026-10-16T13:38:20Z",
+  "hausses": 16,
+  "baisses": 25,
+  "stables": 7,
+  "composite": -0.02,
+  "nStocks": 48
+ },
+ {
   "date": "2026-10-15",
   "label": "Jeudi 15 octobre 2026",
   "lastUpdate": "2026-10-15T23:05:02Z",
